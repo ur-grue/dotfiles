@@ -80,7 +80,7 @@ banner() {
   printf '%s\n' "${PINK}   ▟████████████████████████████████████████████▙${R}"
   printf '%s%*s%s%*s%s\n' "${PINK}   █${CYAN}" "$pl" '' "$title" "$pr" '' "${PINK}█${R}"
   printf '%s\n' "${PINK}   ▜████████████████████████████████████████████▛${R}"
-  printf '%s\n' "${DIM}   VAULT-TEC dev-env · macOS $(sw_vers -productVersion 2>/dev/null || echo '?') · $(date '+%Y-%m-%d %H:%M')${R}"
+  printf '%s\n' "${DIM}   night-city dev-env · macOS $(sw_vers -productVersion 2>/dev/null || echo '?') · $(date '+%Y-%m-%d %H:%M')${R}"
 }
 banner
 
@@ -204,9 +204,12 @@ install_packages() {
 # (Balken/Zähler/Fails + Job-Status). Kein "N Zeilen hoch"-Raten mehr: eine echte
 # DECSTBM-Scroll-Region hält das Panel unten stabil, egal wie viel oben scrollt.
 # Alle Farb-/Zustandsvariablen defensiv mit ${var:-} (Subshells unter set -u).
+# ASCII-Balken (kein Multibyte!). Loop-gebaute Blockzeichen wurden unter macOS-
+# bash-3.2 beim $(...)+read-Durchreichen zerlegt -> "??"/Replacement-Chars.
+# '#'/'-' sind byte-sicher, rendern überall und passen zum Terminal-Look.
 mkbar() { local d=${1:-0} t=${2:-1} w=12 f i s; [ "${t:-0}" -gt 0 ] 2>/dev/null || t=1; f=$(( d*w/t )); [ "$f" -gt "$w" ] && f=$w; [ "$f" -lt 0 ] && f=0
-  s="${GREEN:-}"; i=0; while [ "$i" -lt "$f" ]; do s="$s█"; i=$((i+1)); done
-  s="$s${DIM:-}"; while [ "$i" -lt "$w" ]; do s="$s░"; i=$((i+1)); done; printf '%s%s' "$s" "${R:-}"; }
+  s="${DIM:-}[${GREEN:-}"; i=0; while [ "$i" -lt "$f" ]; do s="$s#"; i=$((i+1)); done
+  s="$s${DIM:-}"; while [ "$i" -lt "$w" ]; do s="$s-"; i=$((i+1)); done; printf '%s%s' "$s]" "${R:-}"; }
 sym_pkg() { local rc
   if [ -f "$LOGD/install.rc" ]; then rc=$(cat "$LOGD/install.rc" 2>/dev/null||echo 0)
     [ "${rc:-0}" = 0 ] && printf '%s' "${GREEN:-}✔${R:-}" || printf '%s' "${YELLOW:-}▲${R:-}"
@@ -225,7 +228,7 @@ panel_lines() {
   [ -r "$LOGD/install.status" ] && { read -r d t kind cur < "$LOGD/install.status" 2>/dev/null || true; }
   [ -s "$LOGD/install.fail" ] && fails=$(wc -l < "$LOGD/install.fail" 2>/dev/null | tr -d ' ')
   bar="$(mkbar "${d:-0}" "${t:-${TOTAL:-1}}")"; cur="$(printf '%s' "${cur:-}" | cut -c1-18)"
-  printf '%s\n' "${DIM:-}╔══ ${CYAN:-}VAULT-TEC SUBSYSTEMS${DIM:-} ══════════════════════════╗${R:-}"
+  printf '%s\n' "${DIM:-}╔══ ${CYAN:-}CYBERDECK SUBSYSTEMS${DIM:-} ══════════════════════════╗${R:-}"
   printf '%s\n' "${DIM:-}║${R:-} $(sym_pkg) ${CYAN:-}PACKAGES${R:-} ${bar:-} ${GREEN:-}${d:-0}/${t:-0}${R:-} ${DIM:-}${cur:-}${R:-}$([ "${fails:-0}" -gt 0 ] && printf ' %s' "${RED:-}✖${fails}${R:-}")"
   panel_job "SHELL " omz
   panel_job "CLONES" repos
@@ -345,7 +348,7 @@ if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ]; then
     elif ask_yn "Jetzt bei GitHub anmelden (gh auth login)?"; then
       gh auth login || warn "gh-Login abgebrochen/fehlgeschlagen."
       if gh auth status >/dev/null 2>&1; then
-        step "Private Repos jetzt klonen (mit Auth)…"
+        step "Private Repos jetzt klonen (mit Auth) — kann bei großen Repos dauern…"
         bash "$REPO_DIR/scripts/clone-repos.sh" || warn "Repo-Klone teils fehlgeschlagen."
       fi
     fi
