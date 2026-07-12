@@ -282,8 +282,15 @@ dashboard() {
     { [ "$i" -ge "$max" ] || [ $(( SECONDS - t0 )) -ge "$to" ]; } && break
     _fri=$(( ( ${_fri:-0} + 1 ) % nf )); sleep 0.12
   done
-  printf '\033[r'                                      # Scroll-Region zurücksetzen (WICHTIG)
-  printf '\033[%d;1H\033[?25h' "$rows"                 # Cursor unter Panel, sichtbar
+  # Panel-Zeilen löschen bevor Scroll-Region zurückgesetzt wird — sonst bleibt
+  # ein "Geist-Panel" das über nachfolgendem Output liegt und ihn optisch löscht.
+  local j=0
+  while [ "$j" -lt "$PH" ]; do
+    printf '\033[%d;1H\033[2K' "$(( top + j ))"
+    j=$(( j + 1 ))
+  done
+  printf '\033[r'                                      # Scroll-Region zurücksetzen
+  printf '\033[%d;1H\033[?25h' "$logbot"               # Cursor ans Log-Ende, sichtbar
 }
 # Zeichnet die 6 Panel-Zeilen ABSOLUT positioniert (kein \n -> kein Fremd-Scroll).
 _draw_panel() {

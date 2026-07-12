@@ -1,20 +1,47 @@
-# ~/.config/ghostty/config
-# Hell/Dunkel folgt macOS automatisch:
-theme = light:rose-pine-dawn,dark:rose-pine
+# ── CYBERDECK SUBSYSTEMS · Ghostty ───────────────────────────────────────
+# Fallout-Amber / Neuromancer-Palette  —  night-city dev-env
 
-font-family = "FiraCode Nerd Font"
-font-size = 15
-adjust-cell-height = 12%
+font-family            = "FiraCode Nerd Font"
+font-size              = 15
+adjust-cell-height     = 12%
+font-thicken           = true
+bold-is-bright         = true
 
-window-padding-x = 10
-window-padding-y = 8
-window-save-state = always
-macos-titlebar-style = tabs
-mouse-hide-while-typing = true
-copy-on-select = clipboard
-scrollback-limit = 10000000
-clipboard-paste-protection = true
-
-# schnelleres Fühlen
+window-save-state                = always
 window-inherit-working-directory = true
-confirm-close-surface = false
+window-padding-x                 = 10
+window-padding-y                 = 8
+macos-titlebar-style             = transparent
+macos-option-as-alt              = true
+mouse-hide-while-typing          = true
+copy-on-select                   = clipboard
+clipboard-paste-protection       = true
+confirm-close-surface            = false
+scrollback-limit                 = 10000000
+
+# Farben — dunkler Hintergrund, Amber/Gold-Vordergrund
+background           = #0c0900
+foreground           = #d4a800
+cursor-color         = #ffb300
+cursor-style         = block
+cursor-style-blink   = false
+selection-background = #3a2d00
+selection-foreground = #ffd700
+
+# 16-Farben-Palette (amber-shifted, Rot/Blau trotzdem unterscheidbar)
+palette = 0=#1a1604      # schwarz  — dunkles Amber-Braun
+palette = 1=#dd3311      # rot      — warm-rot für Fehler
+palette = 2=#7a9a00      # grün     — Olive (Verzeichnisse noch lesbar)
+palette = 3=#cc8800      # gelb     — Amber
+palette = 4=#0066aa      # blau     — gedämpft (git-Branch etc.)
+palette = 5=#884422      # magenta  — verbranntes Sienna
+palette = 6=#aa8800      # cyan     — Amber-Gold
+palette = 7=#c8b068      # weiß     — Weizen
+palette = 8=#342c10      # hell-schwarz
+palette = 9=#ff5511      # hell-rot
+palette = 10=#c8b800     # hell-grün — Gold
+palette = 11=#ffd700     # hell-gelb — helles Gold
+palette = 12=#3388cc     # hell-blau — Neon-Cyan
+palette = 13=#ff7722     # hell-magenta — Orange
+palette = 14=#ffaa00     # hell-cyan — Amber
+palette = 15=#ffe8b0     # hell-weiß — Creme
