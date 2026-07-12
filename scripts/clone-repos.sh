@@ -13,6 +13,9 @@ grep -vE '^[[:space:]]*(#|$)' "$REPO_DIR/repos.txt" \
       url="$1"; name="$(basename "$url" .git)"; dir="$DEV/$name"
       if [ -d "$dir" ]; then echo "  ok    $name"
       else echo "  clone $name"
-        git clone -q "$url" "$dir" || echo "  FAIL  $name (Auth? -> gh auth login)"
+        # http.lowSpeed*: bricht ab, wenn der Transfer 30s lang <1KB/s macht ->
+        # ein stockender Klon kann den (parallelen) Lauf nicht endlos blockieren.
+        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone -q "$url" "$dir" \
+          || echo "  FAIL  $name (Auth? -> gh auth login  |  oder Netz/Timeout)"
       fi' _ {}
 echo "Repo-Klone fertig (~/dev)."

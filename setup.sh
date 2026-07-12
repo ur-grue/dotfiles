@@ -63,9 +63,13 @@ ask_yn() { local q="${1:-?}" a=; printf '%s' "  ${CYAN}${q} [y/N] ${R}"
 # bleibenden $HOME-Log kopiert; LOGD ist reines Wegwerf-Scratch -> kein Leak.
 cleanup(){ printf '\033[r\033[?25h'; kill "${CAFF_PID:-}" "${SUDO_PID:-}" 2>/dev/null || true
   [ -n "${LOGD:-}" ] && [ -d "${LOGD:-}" ] && rm -rf "$LOGD" 2>/dev/null || true; }
-# on_int fängt Strg-C / TERM ab: aufräumen und mit 130 SAUBER beenden (sonst
-# würde der Lauf mit nacktem cleanup weiterlaufen bzw. nicht definiert enden).
-on_int(){ trap - INT TERM; cleanup; printf '\n%s\n' "${YELLOW:-}▲ Abgebrochen (Strg-C).${R:-}"; logline "INT/TERM — abgebrochen"; exit 130; }
+# on_int fängt Strg-C / TERM ab: Parallel-Jobs (brew/git) mit-killen (die laufen
+# sonst verwaist weiter), aufräumen und mit 130 SAUBER beenden. Die Job-PIDs nur
+# HIER killen (nicht in cleanup/EXIT), da sie bei normalem Ende schon fertig sind
+# und ihre PIDs dann fremd wiederverwendet sein könnten.
+on_int(){ trap - INT TERM
+  kill "${P_INS:-}" "${P_OMZ:-}" "${P_REPOS:-}" "${P_MAC:-}" 2>/dev/null || true
+  cleanup; printf '\n%s\n' "${YELLOW:-}▲ Abgebrochen (Strg-C).${R:-}"; logline "INT/TERM — abgebrochen"; exit 130; }
 trap cleanup EXIT
 trap on_int INT TERM
 trap 'ec=$?; if [ "$ec" -ne 0 ]; then printf "\n%s\n" "${RED:-}✖ Fehler (Exit $ec) Zeile ${LINENO}: ${BASH_COMMAND}${R:-}"; logline "ERR ${LINENO}: ${BASH_COMMAND}"; printf "%s\n" "  ${DIM:-}Log: ${LOG}${R:-}"; fi' ERR

@@ -31,12 +31,16 @@ defaults write NSGlobalDomain NSAutomaticDashSubstitutionEnabled -bool false
 
 # Caps Lock -> Control (größter Gewinn für vim/tmux). Sofort aktiv via hidutil;
 # reboot-fest über einen LaunchAgent, der die Zuordnung bei jedem Login neu setzt
-# (hidutil-Mappings überleben sonst keinen Neustart). Best-effort.
-REMAP='{"UserKeyMapping":[{"HIDKeyboardModifierMappingSrc":0x700000039,"HIDKeyboardModifierMappingDst":0x7000000E0}]}'
-/usr/bin/hidutil property --set "$REMAP" >/dev/null 2>&1 || true   # sofort wirksam
-LA_DIR="$HOME/Library/LaunchAgents"; mkdir -p "$LA_DIR"
-PLIST="$LA_DIR/com.ur-grue.capslock-to-control.plist"
-cat > "$PLIST" <<PL
+# (hidutil-Mappings überleben sonst keinen Neustart). KOMPLETT best-effort:
+# in eine Funktion gekapselt, die bei jedem Fehler `return 0` macht und mit
+# `|| true` aufgerufen wird — ein Fehler hier bricht die restlichen Defaults NIE ab.
+caps_to_control() {
+  local REMAP='{"UserKeyMapping":[{"HIDKeyboardModifierMappingSrc":0x700000039,"HIDKeyboardModifierMappingDst":0x7000000E0}]}'
+  /usr/bin/hidutil property --set "$REMAP" >/dev/null 2>&1 || true   # sofort wirksam
+  local LA_DIR="$HOME/Library/LaunchAgents" PLIST dom
+  mkdir -p "$LA_DIR" 2>/dev/null || return 0
+  PLIST="$LA_DIR/com.ur-grue.capslock-to-control.plist"
+  cat > "$PLIST" <<PL || return 0
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -53,8 +57,13 @@ cat > "$PLIST" <<PL
 </dict>
 </plist>
 PL
-launchctl unload "$PLIST" 2>/dev/null || true
-launchctl load -w "$PLIST" 2>/dev/null || true
+  # macOS 11+: bootout/bootstrap ist der aktuelle Weg (load -w ist deprecated und
+  # registriert auf Sequoia/26 evtl. gar nicht). load -w nur als Fallback.
+  dom="gui/$(id -u 2>/dev/null || echo "$UID")"
+  launchctl bootout   "$dom" "$PLIST" 2>/dev/null || true
+  launchctl bootstrap "$dom" "$PLIST" 2>/dev/null || launchctl load -w "$PLIST" 2>/dev/null || true
+}
+caps_to_control || true
 
 killall Finder Dock 2>/dev/null || true
 echo "macOS-Defaults gesetzt (einige greifen erst nach Ab-/Anmelden)."
