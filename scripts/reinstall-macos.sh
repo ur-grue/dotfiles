@@ -148,14 +148,15 @@ sudo -v || die "sudo fehlgeschlagen — Adminrechte nötig."
 # startosinstall --eraseinstall: löscht ALLE Volumes und installiert frisch.
 CMD=( sudo "$STARTOS" --eraseinstall --agreetolicense --newvolumename "Macintosh HD" )
 if [ "$ARCH" = "arm64" ]; then
-  # Apple Silicon verlangt für den Erase einen Volume-Owner (Admin). --user
-  # löst die interaktive Passwortabfrage von startosinstall aus -> kein Passwort
-  # im Skript, in argv oder auf der Platte.
+  # Apple Silicon verlangt für den Erase einen Volume-Owner (Admin). WICHTIG (Tahoe/
+  # macOS 26): --user ALLEIN löst KEINE Passwortabfrage aus -> startosinstall bricht
+  # mit „Provide a password with --stdinpass or --passprompt" ab. Deshalb --passprompt:
+  # startosinstall fragt das Passwort selbst sicher ab (kein Passwort in argv/auf Platte).
   DEF_USER="$(id -un)"
   printf '  Apple Silicon: Volume-Owner (Admin) für die Löschung [%s]: ' "$DEF_USER"
   read -r OWNER </dev/tty 2>/dev/null || OWNER="$DEF_USER"
   OWNER="${OWNER:-$DEF_USER}"
-  CMD+=( --user "$OWNER" )
+  CMD+=( --user "$OWNER" --passprompt )
   info "${DIM}startosinstall fragt gleich das Passwort von '$OWNER' ab.${R}"
 fi
 
