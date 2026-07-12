@@ -52,6 +52,10 @@ step() { printf '\n%s\n' "${PINK}▓▒░${R} ${CYAN}$*${R}"; logline ">> $*"; 
 ok()   { printf '%s\n' "  ${GREEN}✔${R} $*"; logline "OK $*"; }
 warn() { printf '%s\n' "  ${YELLOW}▲ $*${R}"; logline "WARN $*"; }
 die()  { printf '%s\n' "  ${RED}✖ $*${R}"; logline "DIE $*"; exit 1; }
+# Ja/Nein-Frage von der echten TTY (auch wenn stdin sonst umgeleitet ist).
+# Default NEIN. Gibt 0 nur bei ausdrücklichem y/j zurück.
+ask_yn() { local q="${1:-?}" a=; printf '%s' "  ${CYAN}${q} [y/N] ${R}"
+  read -r a </dev/tty 2>/dev/null || return 1; case "$a" in [yYjJ]*) return 0;; *) return 1;; esac; }
 
 # ---- Traps ----
 # cleanup läuft bei JEDEM Exit: Cursor sichtbar, Hintergrund-Helfer killen und das
@@ -328,6 +332,36 @@ mise exec -- npm install -g @anthropic-ai/claude-code >>"$LOG" 2>&1 \
   && ok "Claude Code installiert" \
   || warn "Claude Code separat installieren (docs.claude.com/claude-code)."
 
+# ---- 8. Interaktive Anmeldungen (optional) ----
+# Diese Schritte brauchen ZWINGEND einen Menschen (Browser-OAuth/2FA) — beim
+# Frisch-Setup sitzt der aber davor. Also inline anbieten, statt in eine
+# Nachher-Checkliste zu verschieben. Alles optional, Default NEIN, nie fatal.
+# Überspringen komplett: SETUP_NO_LOGIN=1 ./setup.sh
+if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ]; then
+  step "Anmeldungen (optional — jetzt erledigen erspart die Nachher-Checkliste)"
+  if command -v gh >/dev/null 2>&1; then
+    if gh auth status >/dev/null 2>&1; then
+      ok "GitHub bereits angemeldet"
+    elif ask_yn "Jetzt bei GitHub anmelden (gh auth login)?"; then
+      gh auth login || warn "gh-Login abgebrochen/fehlgeschlagen."
+      if gh auth status >/dev/null 2>&1; then
+        step "Private Repos jetzt klonen (mit Auth)…"
+        bash "$REPO_DIR/scripts/clone-repos.sh" || warn "Repo-Klone teils fehlgeschlagen."
+      fi
+    fi
+  fi
+  if command -v tailscale >/dev/null 2>&1; then
+    ask_yn "Tailscale jetzt verbinden (sudo tailscale up)?" && { sudo tailscale up || warn "tailscale up abgebrochen/fehlgeschlagen."; }
+  fi
+  # Motion-Key nur anbieten, wenn pass schon initialisiert ist (braucht GPG-Key).
+  if command -v pass >/dev/null 2>&1 && [ -d "${PASSWORD_STORE_DIR:-$HOME/.password-store}" ]; then
+    if pass ls motion/api-key >/dev/null 2>&1; then ok "Motion-API-Key bereits in pass"
+    elif ask_yn "Motion-API-Key jetzt in pass hinterlegen (für \`morgen\`)?"; then
+      pass insert motion/api-key || warn "Motion-Key nicht gesetzt — später: pass insert motion/api-key"
+    fi
+  fi
+fi
+
 # ---- Abschluss ----
 { echo "== JOB-LOGS =="; for l in "$LOGD"/*.log; do echo "--- $l ---"; cat "$l" 2>/dev/null; done; } >> "$LOG" 2>/dev/null || true
 S=$(( $(date +%s) - START ))
@@ -338,10 +372,11 @@ printf '%s\n' "  ${CYAN}Voll-Log:${R} $LOG"
 [ -s "$LOGD/install.fail" ] && printf '%s\n' "  ${YELLOW}Übersprungene Pakete später einzeln: brew install <name>${R}"
 cat <<'NEXT'
 
-  Manuelle Restschritte (docs/cheatsheet.md → "Nach dem Setup"):
-   • Apple-ID/iCloud · Ghostty öffnen · pass/GPG-Keys · gh auth login
-   • tailscale up · Citrix-Store · claude starten + Abo-Login
-   • Motion-Key für `morgen`:  pass insert motion/api-key
-   • nvim: :checkhealth (Plugins sind bereits vorgebaut) · p10k configure
-   • Chrome: ./scripts/chrome-extensions.sh · FileVault aktivieren
+  Restschritte, die ZWINGEND ein Mensch machen muss (Logins/Secrets/GUI):
+   • Apple-ID/iCloud · Citrix-Store · claude starten + Abo-Login
+   • GPG-Key importieren (gpg --import) -> danach: pass init & Motion-Key
+   • gh auth login / tailscale up: falls oben übersprungen
+   • Chrome-Extensions: ./scripts/chrome-extensions.sh
+   • FileVault aktivieren (Systemeinstellungen — bewusst manuell)
+   • nvim: :checkhealth (Plugins sind vorgebaut) · p10k ist vorkonfiguriert
 NEXT
