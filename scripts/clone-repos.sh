@@ -8,6 +8,7 @@ export GIT_TERMINAL_PROMPT=0
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEV="$HOME/dev"; mkdir -p "$DEV"
 
+XARGS_RC=0
 grep -vE '^[[:space:]]*(#|$)' "$REPO_DIR/repos.txt" \
   | DEV="$DEV" xargs -P 6 -I {} bash -c '
       url="$1"; name="$(basename "$url" .git)"; dir="$DEV/$name"
@@ -16,6 +17,7 @@ grep -vE '^[[:space:]]*(#|$)' "$REPO_DIR/repos.txt" \
         # http.lowSpeed*: bricht ab, wenn der Transfer 30s lang <1KB/s macht ->
         # ein stockender Klon kann den (parallelen) Lauf nicht endlos blockieren.
         git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone -q "$url" "$dir" \
-          || echo "  FAIL  $name (Auth? -> gh auth login  |  oder Netz/Timeout)"
-      fi' _ {}
+          || { echo "  FAIL  $name (Auth? -> gh auth login  |  oder Netz/Timeout)"; exit 1; }
+      fi' _ {} || XARGS_RC=$?
 echo "Repo-Klone fertig (~/dev)."
+exit $XARGS_RC

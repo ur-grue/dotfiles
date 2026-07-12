@@ -203,7 +203,7 @@ install_packages() {
     else echo "$f (cask)" >> "$LOGD/install.fail"; printf '  X   [%s/%s] %s  FEHLGESCHLAGEN -> uebersprungen\n' "$d" "$TOTAL" "$f"; fi
   done
   printf '%s %s done -\n' "$d" "$TOTAL" > "$LOGD/install.status"
-  wc -l < "$LOGD/install.fail" | tr -d ' ' > "$LOGD/install.rc"
+  [ -s "$LOGD/install.fail" ] && return 1 || return 0
 }
 
 # ---- Dashboard (Fallout-Amber, scroll-region-stabil) --------------------------
@@ -309,6 +309,10 @@ _draw_panel() {
 # unter set -u würde eine ungebundene Variable dort die Subshell killen und den
 # Dashboard-Loop endlos Fehler spammen lassen. Die gesamte Phase ist best-effort.
 step "Subsysteme starten — Pakete einzeln, Rest parallel"
+# gh credential helper vorab einhängen (falls gh schon installiert, z.B. Re-Run):
+# GIT_TERMINAL_PROMPT=0 weiter unten verhindert interaktive Auth; ohne setup-git
+# können auch bereits authentifizierte gh-Sessions nicht an git weitergegeben werden.
+command -v gh >/dev/null 2>&1 && gh auth setup-git >/dev/null 2>&1 || true
 set +eu
 rm -f "$LOGD"/*.rc "$LOGD/install.status"; : > "$LOGD/install.log"; : > "$LOGD/stream"
 # Job-Bodies zusätzlich in `set +eu` kapseln (Defense-in-depth): so wird die
@@ -319,7 +323,9 @@ rm -f "$LOGD"/*.rc "$LOGD/install.status"; : > "$LOGD/install.log"; : > "$LOGD/s
 ( set +eu; bash "$REPO_DIR/scripts/macos-defaults.sh" >"$LOGD/macos.log" 2>&1; echo $? >"$LOGD/macos.rc" ) & P_MAC=$!
 if [ "$TUI" = 1 ]; then
   # Fortschrittszeilen -> stream (Live-Log); brew-Rauschen bleibt in install.log.
-  ( set +eu; install_packages >"$LOGD/stream" 2>&1 ) & P_INS=$!
+  # echo $? im äußeren Subshell: Sentinel auch dann geschrieben, wenn install_packages
+  # vor dem internen return abstürzt (z.B. durch OOM-Kill vor Schleifenende).
+  ( set +eu; install_packages >"$LOGD/stream" 2>&1; echo $? >"$LOGD/install.rc" ) & P_INS=$!
   dashboard
   wait "$P_OMZ" "$P_REPOS" "$P_MAC" "$P_INS" 2>/dev/null
 else
@@ -349,10 +355,11 @@ else warn "oh-my-zsh — Fehler (Log: $LOGD/omz.log)";
   _SOMZ_V="▲ Shell (oh-my-zsh — Fehler)"; _SOMZ_C="${YELLOW}▲${R} Shell  ${DIM}(oh-my-zsh — Fehler)${R}"; fi
 
 RC=$(cat "$LOGD/repos.rc" 2>/dev/null||echo 1)
-if [ "$RC" = 0 ]; then ok "Repo-Klone (~/dev)";
+_RFAIL=$(grep -c "^  FAIL  " "$LOGD/repos.log" 2>/dev/null | tr -d ' ' || echo 0)
+if [ "$RC" = 0 ] && [ "${_RFAIL:-0}" = 0 ]; then ok "Repo-Klone (~/dev)";
   _SREP_V="✔ Repos (~/dev)";              _SREP_C="${GREEN}✔${R} Repos  ${DIM}(~/dev geklont)${R}"
-else warn "Repo-Klone — privat? gh auth login, dann ./scripts/clone-repos.sh";
-  _SREP_V="▲ Repos — Fehler (Auth?)";     _SREP_C="${YELLOW}▲${R} Repos  ${DIM}(Auth? → gh auth login)${R}"; fi
+else warn "Repo-Klone — ${_RFAIL:-?} Fehler (privat? gh auth login, dann ./scripts/clone-repos.sh)";
+  _SREP_V="▲ Repos (${_RFAIL:-?} Fehler)"; _SREP_C="${YELLOW}▲${R} Repos  ${DIM}(${_RFAIL:-?} Fehler → gh auth login)${R}"; fi
 
 RC=$(cat "$LOGD/macos.rc" 2>/dev/null||echo 1)
 if [ "$RC" = 0 ]; then ok "macOS-Defaults";
@@ -367,6 +374,19 @@ if chezmoi init --apply --source "$REPO_DIR" >>"$LOG" 2>&1; then
   _SCHE_V="✔ Dotfiles (chezmoi)";         _SCHE_C="${GREEN}✔${R} Dotfiles  ${DIM}(chezmoi)${R}"
 else warn "chezmoi — Fehler (Ausgabe im Log).";
   _SCHE_V="▲ Dotfiles (chezmoi — Fehler)"; _SCHE_C="${YELLOW}▲${R} Dotfiles  ${DIM}(chezmoi — Fehler)${R}"; fi
+
+# ---- 6b. Runtimes (mise install) ----
+# mise.toml ist jetzt durch chezmoi vorhanden; mise install lädt node/python/ruby.
+# Ohne diesen Schritt schlägt `mise exec -- npm install …` (Step 7) fehl.
+step "Runtimes installieren (mise install)…"
+_SMIS_V="▲ Runtimes (mise nicht gefunden)"; _SMIS_C="${YELLOW}▲${R} Runtimes  ${DIM}(mise install manuell)${R}"
+if command -v mise >/dev/null 2>&1; then
+  if mise install >>"$LOG" 2>&1; then
+    ok "Runtimes (node · python · ruby)"
+    _SMIS_V="✔ Runtimes (mise)"; _SMIS_C="${GREEN}✔${R} Runtimes  ${DIM}(node · python · ruby)${R}"
+  else warn "mise install — Fehler (Log: $LOG)"
+    _SMIS_V="▲ Runtimes (mise — Fehler)"; _SMIS_C="${YELLOW}▲${R} Runtimes  ${DIM}(mise install manuell)${R}"; fi
+else warn "mise nicht gefunden — brew install mise, dann mise install"; fi
 
 # ---- 7. Claude Code ----
 step "Claude Code (npm via mise)…"
@@ -387,13 +407,23 @@ if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ]; then
     if gh auth status >/dev/null 2>&1; then
       ok "GitHub bereits angemeldet"
       _SGH_V="✔ GitHub (angemeldet)"; _SGH_C="${GREEN}✔${R} GitHub  ${DIM}(bereits angemeldet)${R}"; _OPEN_GH=0
+      gh auth setup-git >/dev/null 2>&1 || true
+      if [ "${_RFAIL:-0}" -gt 0 ]; then
+        step "Private Repos klonen (mit Auth, ${_RFAIL} vorher fehlgeschlagen)…"
+        if bash "$REPO_DIR/scripts/clone-repos.sh" 2>&1 | tee -a "$LOG"; then
+          _RFAIL=0
+          _SREP_V="✔ Repos (~/dev)"; _SREP_C="${GREEN}✔${R} Repos  ${DIM}(~/dev geklont)${R}"
+        else warn "Repo-Klone teils fehlgeschlagen."; fi
+      fi
     elif ask_yn "Jetzt bei GitHub anmelden (gh auth login)?"; then
       if gh auth login; then
         _SGH_V="✔ GitHub (angemeldet)"; _SGH_C="${GREEN}✔${R} GitHub  ${DIM}(angemeldet)${R}"; _OPEN_GH=0
-        if gh auth status >/dev/null 2>&1; then
-          step "Private Repos klonen (mit Auth)…"
-          bash "$REPO_DIR/scripts/clone-repos.sh" || warn "Repo-Klone teils fehlgeschlagen."
-        fi
+        gh auth setup-git >/dev/null 2>&1 || true
+        step "Private Repos klonen (mit Auth)…"
+        if bash "$REPO_DIR/scripts/clone-repos.sh" 2>&1 | tee -a "$LOG"; then
+          _RFAIL=0
+          _SREP_V="✔ Repos (~/dev)"; _SREP_C="${GREEN}✔${R} Repos  ${DIM}(~/dev geklont)${R}"
+        else warn "Repo-Klone teils fehlgeschlagen."; fi
       else warn "gh-Login fehlgeschlagen."; fi
     fi
   fi
@@ -401,7 +431,8 @@ if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ]; then
     if ask_yn "Tailscale jetzt verbinden (sudo tailscale up)?"; then
       if sudo tailscale up; then
         _STS_V="✔ Tailscale (verbunden)"; _STS_C="${GREEN}✔${R} Tailscale  ${DIM}(verbunden)${R}"; _OPEN_TS=0
-      else warn "tailscale up fehlgeschlagen."; fi
+      else warn "tailscale up fehlgeschlagen."
+        _STS_V="▲ Tailscale (Fehler)"; _STS_C="${YELLOW}▲${R} Tailscale  ${DIM}(tailscale up fehlgeschlagen)${R}"; fi
     fi
   else _OPEN_TS=0; _STS_V="· Tailscale (n/a)"; _STS_C="${DIM}· Tailscale (nicht installiert)${R}"; fi
   if command -v pass >/dev/null 2>&1 && [ -d "${PASSWORD_STORE_DIR:-$HOME/.password-store}" ]; then
@@ -420,9 +451,8 @@ S=$(( $(date +%s) - START ))
 # _bl "sichtbarer Text" "gefärbter Text"
 # Breite: ║(1) + ··(2) + Inhalt(73) + ··(2) + ║(1) = 79
 _bl() {
-  local vis="$1" col="${2:-$1}" vlen pad
-  vlen=$(printf '%s' "$vis" | wc -m | tr -d ' ')
-  pad=$(( 73 - vlen )); [ "$pad" -lt 0 ] && pad=0
+  local vis="$1" col="${2:-$1}" pad
+  pad=$(( 73 - ${#vis} )); [ "$pad" -lt 0 ] && pad=0
   printf '%s  %s%*s  %s\n' "${DIM}║${R}" "$col" "$pad" "" "${DIM}║${R}"
 }
 _bsep() { printf '%s\n' "${DIM}╠═══════════════════════════════════════════════════════════════════════════╣${R}"; }
@@ -430,7 +460,8 @@ _bemp() { _bl ""; }
 
 # Titelzeile (Breite ohne ANSI exakt berechnen)
 _TTXT="  S Y S T E M   O N L I N E  ·  ${BRAND}  ·  ${S}s"
-_TPAD=$(( 73 - ${#_TTXT} )); [ "$_TPAD" -lt 0 ] && _TPAD=0
+# +2: printf format hat nach %*s noch 2 Leerzeichen vor ║, die nicht in _TTXT stehen.
+_TPAD=$(( 75 - ${#_TTXT} )); [ "$_TPAD" -lt 0 ] && _TPAD=0
 
 printf '\n'
 printf '%s\n' "${PINK}╔═══════════════════════════════════════════════════════════════════════════╗${R}"
@@ -450,6 +481,7 @@ _bl "  ${_SOMZ_V}" "  ${_SOMZ_C}"
 _bl "  ${_SREP_V}" "  ${_SREP_C}"
 _bl "  ${_SMAC_V}" "  ${_SMAC_C}"
 _bl "  ${_SCHE_V}" "  ${_SCHE_C}"
+_bl "  ${_SMIS_V}" "  ${_SMIS_C}"
 _bl "  ${_SCLA_V}" "  ${_SCLA_C}"
 _bl "  ${_SGH_V}"  "  ${_SGH_C}"
 _bl "  ${_STS_V}"  "  ${_STS_C}"
@@ -460,8 +492,10 @@ _bl "  N O C H   O F F E N" "  ${BLUE}N O C H   O F F E N${R}"
 _bemp
 _bl "  ▸  Apple-ID · iCloud · Citrix-Store · claude Abo-Login" \
     "  ${BLUE}▸${R}  Apple-ID ${DIM}·${R} iCloud ${DIM}·${R} Citrix-Store ${DIM}·${R} claude Abo-Login"
-_bl "  ▸  GPG-Key importieren  →  pass init  →  Motion-API-Key" \
-    "  ${BLUE}▸${R}  GPG-Key importieren  ${DIM}→${R}  pass init  ${DIM}→${R}  Motion-API-Key"
+_bl "  ▸  GPG-Key importieren  →  pass init  →  pass insert motion/api-key" \
+    "  ${BLUE}▸${R}  GPG-Key importieren  ${DIM}→${R}  pass init  ${DIM}→${R}  pass insert motion/api-key"
+_bl "  ▸  morgen CLI installieren (Motion-API-Wrapper, npm i -g morgen)" \
+    "  ${BLUE}▸${R}  morgen CLI  ${DIM}(Motion-Wrapper → npm i -g morgen)${R}"
 [ "$_OPEN_GH" = 1 ] && \
   _bl "  ▸  gh auth login" "  ${BLUE}▸${R}  ${CYAN}gh auth login${R}"
 [ "$_OPEN_TS" = 1 ] && \
