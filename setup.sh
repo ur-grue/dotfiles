@@ -455,10 +455,25 @@ if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ]; then
         _STS_V="▲ Tailscale (Fehler)"; _STS_C="${YELLOW}▲${R} Tailscale  ${DIM}(tailscale up fehlgeschlagen)${R}"; fi
     fi
   else _OPEN_TS=0; _STS_V="· Tailscale (n/a)"; _STS_C="${DIM}· Tailscale (nicht installiert)${R}"; fi
-  if command -v pass >/dev/null 2>&1 && [ -d "${PASSWORD_STORE_DIR:-$HOME/.password-store}" ]; then
-    if pass ls motion/api-key >/dev/null 2>&1; then ok "Motion-API-Key bereits in pass"
-    elif ask_yn "Motion-API-Key jetzt in pass hinterlegen (für \`morgen\`)?"; then
-      pass insert motion/api-key || warn "Motion-Key nicht gesetzt — später: pass insert motion/api-key"
+  if command -v pass >/dev/null 2>&1; then
+    _PSD="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
+    # pass braucht einen GPG-Key. Ist einer importiert (manueller Schritt — Secret),
+    # aber pass noch nicht initialisiert -> AUTOMATISCH initialisieren. Fingerprint
+    # des ersten Secret-Keys aus gpg ziehen; das erspart das manuelle `pass init`.
+    if [ ! -f "$_PSD/.gpg-id" ] && command -v gpg >/dev/null 2>&1; then
+      _GPGID="$(gpg --list-secret-keys --with-colons 2>/dev/null | awk -F: '/^fpr:/{print $10; exit}')"
+      if [ -n "${_GPGID:-}" ]; then
+        if pass init "$_GPGID" >>"$LOG" 2>&1; then ok "pass initialisiert (GPG-Key erkannt)"
+        else warn "pass init fehlgeschlagen — manuell: pass init <gpg-id>"; fi
+      fi
+    fi
+    # Motion-Key bleibt manueller Insert (Secret, nie im Repo) — jetzt aber erreichbar,
+    # weil der Store oben ggf. gerade angelegt wurde.
+    if [ -f "$_PSD/.gpg-id" ]; then
+      if pass ls motion/api-key >/dev/null 2>&1; then ok "Motion-API-Key bereits in pass"
+      elif ask_yn "Motion-API-Key jetzt in pass hinterlegen (für \`morgen\`)?"; then
+        pass insert motion/api-key || warn "Motion-Key nicht gesetzt — später: pass insert motion/api-key"
+      fi
     fi
   fi
 fi

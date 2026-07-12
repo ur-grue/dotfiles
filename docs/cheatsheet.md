@@ -6,23 +6,33 @@ Deine zentrale Referenz. Vertiefungen: [`claude-code.md`](claude-code.md) · [`t
 
 ## Nach dem Setup (einmalig)
 
-Nach `./setup.sh` bleiben ein paar manuelle Schritte:
+### Läuft schon automatisch — nur zur Info (KEIN Handgriff nötig)
 
-- **Apple-ID / iCloud** anmelden
-- **Ghostty** einmal öffnen → wird zum Standard-Terminal (System-Einstellungen prüfen)
-- **pass / GPG**: falls neu, `gpg --full-generate-key`, dann `pass init <GPG-ID>`. Keys ablegen: `pass insert anthropic/api-key`
-- **Tailscale**: `tailscale up` (Login, verbindet mit iMac/Homelab)
-- **Citrix**: Store-URL + Login der ARTE-Umgebung eintragen (Client bleibt privat, kein MDM)
-- **Claude Code**: einmal `claude` starten → **Abo-Login** (kein API-Key nötig)
-- **E-Mail (mutt-wizard)**: separat installieren, dann `mw -a sebastian.nuss@…`
-- **p10k**: `p10k configure` (oder eigene `.p10k.zsh` ins Repo legen)
-- **nvim**: einmal `nvim` öffnen → Plugins installieren sich selbst (`:Lazy` zum Prüfen)
-- **Chrome**: `./scripts/chrome-extensions.sh` (Extensions), Lesezeichen aus
-  `docs/chrome-bookmarks.html` importieren, dann mit Google-Konto anmelden →
-  Sync spielt alles auf den iMac. Details: `docs/chrome.md`.
-- **Beeper**: einmal öffnen, Konto anlegen, WhatsApp/Telegram per Gerät-Link koppeln.
-- **Chrome-Sync** übernimmt danach Extensions/Lesezeichen automatisch auf dem iMac.
-- **Secrets**: bei Bedarf `cp ~/.config/zsh/secrets.zsh.example ~/.config/zsh/secrets.zsh`
+- **p10k** — Prompt ist über `dot_p10k.zsh` vorkonfiguriert (kein `p10k configure`).
+- **nvim** — Plugins sind headless vorgebaut (`run_once_40`). Prüfen optional: `nvim` → `:Lazy` / `:checkhealth`.
+- **tmux** — TPM + Plugins automatisch installiert.
+- **Runtimes** — `mise install` (node/python/ruby) läuft im Setup.
+- **Caps Lock → Control**, Screenshots-Ordner, Finder/Dock-Defaults — via `macos-defaults.sh`.
+- **GitHub / Tailscale / pass init** — werden am Setup-Ende **angeboten**; einmal `y` genügt.
+  `pass init` läuft sogar automatisch, sobald dein GPG-Key importiert ist.
+
+### Wirklich manuell — Auth/Secrets, geht technisch nicht anders
+
+- **Apple-ID / iCloud** anmelden (Apple-Login + 2FA).
+- **Claude Code**: einmal `claude` starten → **Abo-Login** (kein API-Key nötig).
+- **GPG-Key importieren**: `gpg --import <key>.asc` (Secret aus Backup — nie im Repo).
+  Danach initialisiert das Setup `pass` selbst; Keys ablegen: `pass insert motion/api-key`.
+- **Citrix**: Store-URL + Login der ARTE-Umgebung (Client bleibt privat, kein MDM).
+- **FileVault** aktivieren: Systemeinstellungen ▸ Datenschutz & Sicherheit (bewusst NICHT
+  automatisiert — Recovery-Key + Reboot-Risiko).
+- **E-Mail (mutt-wizard)**: `mw -a sebastian.nuss@…` (fragt Zugangsdaten ab).
+- **Chrome**: mit Google-Konto anmelden → **Sync** spielt Extensions + Lesezeichen selbst
+  auf. Ohne Sync: `./scripts/chrome-extensions.sh`, Lesezeichen aus
+  `docs/chrome-bookmarks.html`. Details: `docs/chrome.md`.
+- **Beeper**: öffnen, Konto anlegen, WhatsApp/Telegram per Gerät-Link koppeln.
+- **Ghostty** als Standard-Terminal: einmal öffnen (macOS hat keine Terminal-Default-API).
+- **Secrets** (optional): `cp ~/.config/zsh/secrets.zsh.example ~/.config/zsh/secrets.zsh`
+  — nur nötig, wenn Skripte eigene Keys brauchen (CC braucht keinen).
 
 ---
 

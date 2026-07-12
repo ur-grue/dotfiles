@@ -14,11 +14,34 @@
 #     ./scripts/reinstall-macos.sh --download   # nur Full-Installer laden, NICHT löschen
 #     ./scripts/reinstall-macos.sh              # interaktiv; verlangt getippte Bestätigung
 #
-#   Alternative (moderner/schneller, aber GUI): „Alle Inhalte & Einstellungen löschen"
-#     open "/System/Library/CoreServices/Erase Assistant.app"
-#   Auf Apple Silicon / T2 ist das ein kryptografischer Sofort-Reset ohne Neu-Download
-#   und behält die aktuelle macOS-Version. Dieses Skript nimmt bewusst den vollen
-#   Erase-Install-Weg (frische OS-Kopie — repariert auch eine kaputte Installation).
+#   DREI WEGE ZUM FRISCHEN macOS (alle valide — Wahl nach Situation):
+#
+#   1) Dieses Skript  —  startosinstall --eraseinstall, AUS dem laufenden macOS.
+#      Ein Befehl, lädt/nutzt einen Full-Installer, löscht alle Volumes, installiert
+#      neu. Bequem, wenn das System noch bootet.
+#
+#   2) Erase Assistant (GUI, am schnellsten/sichersten auf Apple Silicon / T2):
+#        open "/System/Library/CoreServices/Erase Assistant.app"
+#      Systemeinstellungen ▸ „Alle Inhalte & Einstellungen löschen". Kryptografischer
+#      Sofort-Reset OHNE Neu-Download, behält die macOS-Version, kann NICHT bricken.
+#
+#   3) Web-Install / Recovery (unabhängig vom installierten OS — am robustesten):
+#      • Apple Silicon: Mac aus, Power-Knopf HALTEN bis „Startoptionen", ▸ Optionen
+#        ▸ „macOS neu installieren" (lädt frisch von Apple).
+#      • Intel:  Cmd-Option-R beim Booten = Internet-Recovery (lädt macOS aus dem Netz).
+#      In Recovery kannst du in der FESTPLATTENDIENSTPROGRAMM-App die Platte auch
+#      wirklich SAUBER neu anlegen (siehe unten).
+#
+#   „Partition vorher sauber neu erstellen?" — Ja, aber meist NICHT nötig: sowohl
+#   eraseinstall (1) als auch Erase Assistant (2) legen automatisch ein sauberes
+#   APFS-Volume an. Willst du den Container wirklich frisch partitionieren: in
+#   RECOVERY ▸ Festplattendienstprogramm ▸ Darstellung „Alle Geräte einblenden" ▸
+#   die OBERSTE physische Platte wählen ▸ Löschen ▸ APFS ▸ dann „macOS neu
+#   installieren". ACHTUNG Apple Silicon: manuelles Löschen der internen Platte kann
+#   im Fehlerfall eine DFU-Wiederbelebung per zweitem Mac (Apple Configurator)
+#   nötig machen — daher dort lieber (2)/(1), außer die Platte ist wirklich defekt.
+#   Dieses Skript nimmt bewusst Weg (1): frische OS-Kopie, repariert auch kaputte
+#   Installationen, ohne manuelle Platten-Chirurgie.
 set -uo pipefail
 
 # ---- Farben (nur bei TTY) ----
@@ -34,7 +57,7 @@ MODE=erase
 for a in "${@:-}"; do case "$a" in
   --check|--dry-run) MODE=check ;;
   --download)        MODE=download ;;
-  --help|-h) sed -n '2,20p' "$0"; exit 0 ;;
+  --help|-h) sed -n '2,44p' "$0"; exit 0 ;;
   "") ;;
   *) die "Unbekannte Option: $a  (--check | --download | --help)" ;;
 esac; done
