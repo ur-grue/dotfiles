@@ -494,8 +494,8 @@ _bl "  ▸  Apple-ID · iCloud · Citrix-Store · claude Abo-Login" \
     "  ${BLUE}▸${R}  Apple-ID ${DIM}·${R} iCloud ${DIM}·${R} Citrix-Store ${DIM}·${R} claude Abo-Login"
 _bl "  ▸  GPG-Key importieren  →  pass init  →  pass insert motion/api-key" \
     "  ${BLUE}▸${R}  GPG-Key importieren  ${DIM}→${R}  pass init  ${DIM}→${R}  pass insert motion/api-key"
-_bl "  ▸  morgen CLI installieren (Motion-API-Wrapper, npm i -g morgen)" \
-    "  ${BLUE}▸${R}  morgen CLI  ${DIM}(Motion-Wrapper → npm i -g morgen)${R}"
+_bl "  ▸  morgen (Terminal-Briefing) liegt in ~/.local/bin — braucht nur den Key" \
+    "  ${BLUE}▸${R}  ${CYAN}morgen${R} ${DIM}(Briefing in ~/.local/bin — braucht nur den Motion-Key)${R}"
 [ "$_OPEN_GH" = 1 ] && \
   _bl "  ▸  gh auth login" "  ${BLUE}▸${R}  ${CYAN}gh auth login${R}"
 [ "$_OPEN_TS" = 1 ] && \
