@@ -43,8 +43,13 @@ warn() { printf '%s\n' "  ${YELLOW}▲ $*${R}"; logline "WARN $*"; }
 die()  { printf '%s\n' "  ${RED}✖ $*${R}"; logline "DIE $*"; exit 1; }
 
 # ---- Traps ----
+# cleanup läuft bei JEDEM Exit: Cursor wieder sichtbar, Hintergrund-Helfer killen.
 cleanup(){ printf '\033[?25h'; kill "${CAFF_PID:-}" "${SUDO_PID:-}" 2>/dev/null || true; }
-trap cleanup EXIT INT TERM
+# on_int fängt Strg-C / TERM ab: aufräumen und mit 130 SAUBER beenden (sonst
+# würde der Lauf mit nacktem cleanup weiterlaufen bzw. nicht definiert enden).
+on_int(){ trap - INT TERM; cleanup; printf '\n%s\n' "${YELLOW:-}▲ Abgebrochen (Strg-C).${R:-}"; logline "INT/TERM — abgebrochen"; exit 130; }
+trap cleanup EXIT
+trap on_int INT TERM
 trap 'ec=$?; if [ "$ec" -ne 0 ]; then printf "\n%s\n" "${RED:-}✖ Fehler (Exit $ec) Zeile ${LINENO}: ${BASH_COMMAND}${R:-}"; logline "ERR ${LINENO}: ${BASH_COMMAND}"; printf "%s\n" "  ${DIM:-}Log: ${LOG}${R:-}"; fi' ERR
 
 # ---- Banner ----
@@ -145,7 +150,7 @@ setup_omz() {
 
 # Kernstück: EINZELNE Paketinstallation mit Fehler-Isolation.
 install_packages() {
-  set +e
+  set +eu
   local d=0 f
   : > "$LOGD/install.fail"
   for f in "${BREWS[@]}"; do
@@ -169,60 +174,81 @@ install_packages() {
 }
 
 # ---- Dashboard ----
-mkbar() { local d=$1 t=$2 w=12 f i s; [ "$t" -gt 0 ] || t=1; f=$(( d*w/t )); [ $f -gt $w ] && f=$w
-  s="${GREEN}"; i=0; while [ $i -lt $f ]; do s="$s█"; i=$((i+1)); done
-  s="$s${DIM}"; while [ $i -lt $w ]; do s="$s░"; i=$((i+1)); done; printf '%s%s' "$s" "$R"; }
+# Alle Farb-/Zustandsvariablen defensiv mit ${var:-} — diese Funktionen laufen in
+# $(...)-Subshells; unter set -u würde EINE ungebundene Variable die Subshell
+# killen und (bei laufender Schleife) Fehler spammen. ${:-} macht das unmöglich.
+mkbar() { local d=${1:-0} t=${2:-1} w=12 f i s; [ "${t:-0}" -gt 0 ] 2>/dev/null || t=1; f=$(( d*w/t )); [ "$f" -gt "$w" ] && f=$w; [ "$f" -lt 0 ] && f=0
+  s="${GREEN:-}"; i=0; while [ "$i" -lt "$f" ]; do s="$s█"; i=$((i+1)); done
+  s="$s${DIM:-}"; while [ "$i" -lt "$w" ]; do s="$s░"; i=$((i+1)); done; printf '%s%s' "$s" "${R:-}"; }
 sym_pkg() { local rc
   if [ -f "$LOGD/install.rc" ]; then rc=$(cat "$LOGD/install.rc" 2>/dev/null||echo 0)
-    [ "$rc" = 0 ] && printf '%s' "${GREEN}✔${R}" || printf '%s' "${YELLOW}▲${R}"
-  else printf '%s' "${CYAN}${FR[$_fri]}${R}"; fi; }
-sym_job() { local n="$1" rc
+    [ "${rc:-0}" = 0 ] && printf '%s' "${GREEN:-}✔${R:-}" || printf '%s' "${YELLOW:-}▲${R:-}"
+  else printf '%s' "${CYAN:-}${FR[${_fri:-0}]:-}${R:-}"; fi; }
+sym_job() { local n="${1:-}" rc
   if [ -f "$LOGD/$n.rc" ]; then rc=$(cat "$LOGD/$n.rc" 2>/dev/null||echo 1)
-    [ "$rc" = 0 ] && printf '%s' "${GREEN}✔${R}" || printf '%s' "${YELLOW}▲${R}"
-  else printf '%s' "${CYAN}${FR[$_fri]}${R}"; fi; }
-dash_row() { local label="$1" name="$2" s line
+    [ "${rc:-1}" = 0 ] && printf '%s' "${GREEN:-}✔${R:-}" || printf '%s' "${YELLOW:-}▲${R:-}"
+  else printf '%s' "${CYAN:-}${FR[${_fri:-0}]:-}${R:-}"; fi; }
+dash_row() { local label="${1:-}" name="${2:-}" s line
   s="$(sym_job "$name")"
   line="$(tail -n1 "$LOGD/$name.log" 2>/dev/null | tr -d '\r' | tr -dc '[:print:]' | cut -c1-30)"
-  printf '\033[2K%s\n' "${DIM}║${R} $s ${PINK}${label}${R} ${DIM}${line}${R}"; }
+  printf '\033[2K%s\n' "${DIM:-}║${R:-} $s ${PINK:-}${label}${R:-} ${DIM:-}${line:-}${R:-}"; }
 dash_draw() {
-  [ "$_first" = 0 ] && printf '\033[6A'; _first=0
-  local d=0 t=$TOTAL kind cur="…" fails=0 bar
+  [ "${_first:-1}" = 0 ] && printf '\033[6A'; _first=0
+  local d=0 t=${TOTAL:-1} kind cur="…" fails=0 bar
   [ -r "$LOGD/install.status" ] && { read -r d t kind cur < "$LOGD/install.status" 2>/dev/null || true; }
   [ -s "$LOGD/install.fail" ] && fails=$(wc -l < "$LOGD/install.fail" | tr -d ' ')
-  bar="$(mkbar "${d:-0}" "${t:-$TOTAL}")"; cur="$(printf '%s' "$cur" | cut -c1-16)"
-  printf '\033[2K%s\n' "${DIM}╔══ ${PINK}PARALLEL SUBSYSTEMS${DIM} ═══════════════════════════╗${R}"
-  printf '\033[2K%s\n' "${DIM}║${R} $(sym_pkg) ${PINK}PACKAGES${R} $bar ${CYAN}${d}/${t}${R} ${DIM}${cur}${R}$([ "${fails:-0}" -gt 0 ] && printf ' %s' "${RED}✖${fails}${R}")"
+  bar="$(mkbar "${d:-0}" "${t:-${TOTAL:-1}}")"; cur="$(printf '%s' "${cur:-}" | cut -c1-16)"
+  printf '\033[2K%s\n' "${DIM:-}╔══ ${PINK:-}PARALLEL SUBSYSTEMS${DIM:-} ═══════════════════════════╗${R:-}"
+  printf '\033[2K%s\n' "${DIM:-}║${R:-} $(sym_pkg) ${PINK:-}PACKAGES${R:-} ${bar:-} ${CYAN:-}${d:-0}/${t:-0}${R:-} ${DIM:-}${cur:-}${R:-}$([ "${fails:-0}" -gt 0 ] && printf ' %s' "${RED:-}✖${fails}${R:-}")"
   dash_row "SHELL  " omz
   dash_row "CLONES " repos
   dash_row "SYSTEM " macos
-  printf '\033[2K%s\n' "${DIM}╚═════════════════════════════════════════════════╝${R}"
+  printf '\033[2K%s\n' "${DIM:-}╚═════════════════════════════════════════════════╝${R:-}"
 }
 dashboard() {
   printf '\033[?25l'
+  # Abbruch-Bedingungen (Endlosschleifen-Schutz):
+  #  1) alle vier Sentinels (install/omz/repos/macos.rc) da  -> normaler Abschluss
+  #  2) harter Wall-Clock-Timeout (default 90 min)            -> Hintergrund läuft weiter
+  #  3) Max-Iterationen als zusätzlicher Backstop
+  # NF/_fri defensiv, damit die Schleife selbst nie an set -u stirbt.
+  local i=0 max=${DASH_MAX_ITERS:-60000} t0=$SECONDS to=${DASH_TIMEOUT:-5400} nf=${NF:-1}
+  [ "$nf" -gt 0 ] 2>/dev/null || nf=1
   while :; do
     dash_draw
     if [ -f "$LOGD/install.rc" ] && [ -f "$LOGD/omz.rc" ] && [ -f "$LOGD/repos.rc" ] && [ -f "$LOGD/macos.rc" ]; then dash_draw; break; fi
-    _fri=$(( (_fri+1) % NF )); sleep 0.12
+    i=$((i+1))
+    if [ "$i" -ge "$max" ] || [ $(( SECONDS - t0 )) -ge "$to" ]; then
+      printf '\033[2K%s\n' "${YELLOW:-}▲ Dashboard-Timeout — Subsysteme laufen im Hintergrund weiter.${R:-}"
+      break
+    fi
+    _fri=$(( ( ${_fri:-0} + 1 ) % nf )); sleep 0.12
   done
   printf '\033[?25h'
 }
 
 # ---- 4. PARALLEL-PHASE (Fehler hier sind nie fatal) ----
+# WICHTIG: set +eu (NICHT nur +e). Die UI-/Draw-Funktionen laufen in Subshells;
+# unter set -u würde eine ungebundene Variable dort die Subshell killen und den
+# Dashboard-Loop endlos Fehler spammen lassen. Die gesamte Phase ist best-effort.
 step "Subsysteme starten — Pakete einzeln, Rest parallel"
-set +e
+set +eu
 rm -f "$LOGD"/*.rc "$LOGD/install.status"; : > "$LOGD/install.log"
-( setup_omz                             >"$LOGD/omz.log"   2>&1; echo $? >"$LOGD/omz.rc"   ) & P_OMZ=$!
-( "$REPO_DIR/scripts/clone-repos.sh"    >"$LOGD/repos.log" 2>&1; echo $? >"$LOGD/repos.rc" ) & P_REPOS=$!
-( "$REPO_DIR/scripts/macos-defaults.sh" >"$LOGD/macos.log" 2>&1; echo $? >"$LOGD/macos.rc" ) & P_MAC=$!
+# Job-Bodies zusätzlich in `set +eu` kapseln (Defense-in-depth): so wird die
+# .rc-Sentinel-Datei IMMER geschrieben — auch wenn eine Funktion unter set -e/-u
+# vorzeitig stürbe. Ohne die .rc bliebe der dashboard()-Loop hängen.
+( set +eu; setup_omz                             >"$LOGD/omz.log"   2>&1; echo $? >"$LOGD/omz.rc"   ) & P_OMZ=$!
+( set +eu; "$REPO_DIR/scripts/clone-repos.sh"    >"$LOGD/repos.log" 2>&1; echo $? >"$LOGD/repos.rc" ) & P_REPOS=$!
+( set +eu; "$REPO_DIR/scripts/macos-defaults.sh" >"$LOGD/macos.log" 2>&1; echo $? >"$LOGD/macos.rc" ) & P_MAC=$!
 if [ "$TUI" = 1 ]; then
-  ( install_packages >"$LOGD/install.log" 2>&1 ) & P_INS=$!
+  ( set +eu; install_packages >"$LOGD/install.log" 2>&1 ) & P_INS=$!
   dashboard
   wait "$P_OMZ" "$P_REPOS" "$P_MAC" "$P_INS" 2>/dev/null
 else
   install_packages
   wait "$P_OMZ" "$P_REPOS" "$P_MAC" 2>/dev/null
 fi
-set -e
+set -eu
 
 # ---- 5. Report der Parallel-Phase ----
 step "Ergebnis"
