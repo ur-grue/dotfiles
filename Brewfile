@@ -78,6 +78,7 @@ cask "citrix-workspace"           # ARTE-Umgebung
 cask "google-chrome"              # Browser (Extensions) + Office 365 im Web/PWA
 cask "microsoft-teams"            # Haupt-Kommunikation (Calls/Chat) — nativ = beste Call-Qualität
 cask "rectangle"                  # Fenster per Tastenkürzel (keyboard-first)
+cask "claude"                     # Claude Desktop-App (parallel zu Claude Code im Terminal)
 # Office 365 + Outlook Web: keine Installation -> office.com / outlook.office.com
 #   im Chrome als PWA installierbar (empfohlen für die ARTE-Mail)
 # cask "microsoft-outlook"        # Outlook NATIV — nur wenn dir Web bei viel Mail zu wenig ist

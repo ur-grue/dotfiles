@@ -355,7 +355,9 @@ else warn "oh-my-zsh — Fehler (Log: $LOGD/omz.log)";
   _SOMZ_V="▲ Shell (oh-my-zsh — Fehler)"; _SOMZ_C="${YELLOW}▲${R} Shell  ${DIM}(oh-my-zsh — Fehler)${R}"; fi
 
 RC=$(cat "$LOGD/repos.rc" 2>/dev/null||echo 1)
-_RFAIL=$(grep -c "^  FAIL  " "$LOGD/repos.log" 2>/dev/null | tr -d ' ' || echo 0)
+# grep -c gibt bei 0 Treffern "0" aus UND exitet 1 -> KEIN `| tr || echo 0`
+# (das hängte ein zweites "0" an -> "0\n0"). `|| true` schluckt nur den Exit.
+_RFAIL=$(grep -c "^  FAIL  " "$LOGD/repos.log" 2>/dev/null || true); _RFAIL=${_RFAIL:-0}
 if [ "$RC" = 0 ] && [ "${_RFAIL:-0}" = 0 ]; then ok "Repo-Klone (~/dev)";
   _SREP_V="✔ Repos (~/dev)";              _SREP_C="${GREEN}✔${R} Repos  ${DIM}(~/dev geklont)${R}"
 else warn "Repo-Klone — ${_RFAIL:-?} Fehler (privat? gh auth login, dann ./scripts/clone-repos.sh)";
@@ -368,11 +370,29 @@ else warn "macOS-Defaults — Fehler (Log: $LOGD/macos.log)";
   _SMAC_V="▲ macOS-Defaults — Fehler";    _SMAC_C="${YELLOW}▲${R} macOS-Defaults  ${DIM}(Fehler)${R}"; fi
 
 # ---- 6. Dotfiles (chezmoi) ----
+# KRITISCH: .chezmoi.toml.tmpl fragt beim ERSTEN Lauf name+email (für git) via
+# promptStringOnce ab. Da chezmoi hier nach `>>LOG 2>&1` läuft, wäre dieser Prompt
+# UNSICHTBAR im Log — der Lauf schiene bei „Dotfiles anwenden…" einzufrieren, bis
+# man blind Name/E-Mail tippt. Daher: Werte HIER sichtbar abfragen und per
+# --promptString durchreichen. --promptDefaults ist IMMER dabei -> chezmoi promptet
+# nie (kein Hang), und das Array ist nie leer (kein bash-3.2 `set -u`-Crash).
 step "Dotfiles anwenden (chezmoi)…"
-if chezmoi init --apply --source "$REPO_DIR" >>"$LOG" 2>&1; then
+CZ_ARGS=(--promptDefaults)
+if [ -t 0 ] && [ -t 1 ]; then
+  _DEF_NAME="$(git config --global user.name 2>/dev/null || true)"
+  _DEF_EMAIL="$(git config --global user.email 2>/dev/null || true)"
+  printf '%s' "  ${CYAN}Voller Name (für git)${R}${_DEF_NAME:+ ${DIM}[$_DEF_NAME]${R}}: "
+  read -r _IN_NAME  </dev/tty 2>/dev/null || _IN_NAME=""
+  printf '%s' "  ${CYAN}E-Mail (für git)${R}${_DEF_EMAIL:+ ${DIM}[$_DEF_EMAIL]${R}}: "
+  read -r _IN_EMAIL </dev/tty 2>/dev/null || _IN_EMAIL=""
+  _IN_NAME="${_IN_NAME:-$_DEF_NAME}"; _IN_EMAIL="${_IN_EMAIL:-$_DEF_EMAIL}"
+  [ -n "$_IN_NAME" ]  && CZ_ARGS+=(--promptString "name=$_IN_NAME")
+  [ -n "$_IN_EMAIL" ] && CZ_ARGS+=(--promptString "email=$_IN_EMAIL")
+fi
+if chezmoi init --apply --source "$REPO_DIR" "${CZ_ARGS[@]}" >>"$LOG" 2>&1; then
   ok "Dotfiles (chezmoi)"
   _SCHE_V="✔ Dotfiles (chezmoi)";         _SCHE_C="${GREEN}✔${R} Dotfiles  ${DIM}(chezmoi)${R}"
-else warn "chezmoi — Fehler (Ausgabe im Log).";
+else warn "chezmoi — Fehler (Details: $LOG).";
   _SCHE_V="▲ Dotfiles (chezmoi — Fehler)"; _SCHE_C="${YELLOW}▲${R} Dotfiles  ${DIM}(chezmoi — Fehler)${R}"; fi
 
 # ---- 6b. Runtimes (mise install) ----
