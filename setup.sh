@@ -240,9 +240,9 @@ rm -f "$LOGD"/*.rc "$LOGD/install.status"; : > "$LOGD/install.log"
 # Job-Bodies zusätzlich in `set +eu` kapseln (Defense-in-depth): so wird die
 # .rc-Sentinel-Datei IMMER geschrieben — auch wenn eine Funktion unter set -e/-u
 # vorzeitig stürbe. Ohne die .rc bliebe der dashboard()-Loop hängen.
-( set +eu; setup_omz                             >"$LOGD/omz.log"   2>&1; echo $? >"$LOGD/omz.rc"   ) & P_OMZ=$!
-( set +eu; "$REPO_DIR/scripts/clone-repos.sh"    >"$LOGD/repos.log" 2>&1; echo $? >"$LOGD/repos.rc" ) & P_REPOS=$!
-( set +eu; "$REPO_DIR/scripts/macos-defaults.sh" >"$LOGD/macos.log" 2>&1; echo $? >"$LOGD/macos.rc" ) & P_MAC=$!
+( set +eu; setup_omz                                  >"$LOGD/omz.log"   2>&1; echo $? >"$LOGD/omz.rc"   ) & P_OMZ=$!
+( set +eu; bash "$REPO_DIR/scripts/clone-repos.sh"    >"$LOGD/repos.log" 2>&1; echo $? >"$LOGD/repos.rc" ) & P_REPOS=$!
+( set +eu; bash "$REPO_DIR/scripts/macos-defaults.sh" >"$LOGD/macos.log" 2>&1; echo $? >"$LOGD/macos.rc" ) & P_MAC=$!
 if [ "$TUI" = 1 ]; then
   ( set +eu; install_packages >"$LOGD/install.log" 2>&1 ) & P_INS=$!
   dashboard

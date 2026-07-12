@@ -6,3 +6,6 @@ ruby = "3.3"
 
 [settings]
 idiomatic_version_file_enable_tools = ["node", "python", "ruby"]
+# Vorkompiliertes Ruby statt Quelltext-Build -> Sekunden statt Minuten.
+# (mise macht das ab 2026.8.0 ohnehin zum Default.)
+ruby.compile = false
