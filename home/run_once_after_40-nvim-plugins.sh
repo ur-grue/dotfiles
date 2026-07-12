@@ -6,5 +6,7 @@ set -uo pipefail
 command -v nvim >/dev/null 2>&1 || exit 0
 echo "▸ nvim: Plugins vorbauen (lazy.nvim)…"
 # Lazy! = ohne UI/Prompts; sync = install + update + clean; dann sauber beenden.
-nvim --headless "+Lazy! sync" +qa >/dev/null 2>&1 || \
+# </dev/null: kein TTY erben -> ein blockierendes getchar()/input() (z.B. wenn der
+# lazy.nvim-Bootstrap-Clone scheitert) bekommt sofort EOF statt ewig zu hängen.
+nvim --headless "+Lazy! sync" +qa </dev/null >/dev/null 2>&1 || \
   echo "  (nvim-Plugins nicht komplett — später einmal 'nvim' öffnen + :Lazy sync)"

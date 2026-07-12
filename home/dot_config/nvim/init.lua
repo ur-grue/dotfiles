@@ -10,7 +10,10 @@ if not (vim.uv or vim.loop).fs_stat(lazypath) then
   local out = vim.fn.system({ "git", "clone", "--filter=blob:none", "--branch=stable", repo, lazypath })
   if vim.v.shell_error ~= 0 then
     vim.api.nvim_echo({ { "lazy.nvim clone fehlgeschlagen:\n", "ErrorMsg" }, { out, "WarningMsg" } }, true, {})
-    vim.fn.getchar()
+    -- NUR mit angehängtem UI auf Tastendruck warten. Headless (z.B. `nvim --headless
+    -- +Lazy! sync` im Setup) hätte hier sonst auf getchar() geblockt — unsichtbar,
+    -- weil stdout/err ins Log/Nirwana gehen -> das ganze Setup schiene einzufrieren.
+    if #vim.api.nvim_list_uis() > 0 then vim.fn.getchar() end
     os.exit(1)
   end
 end

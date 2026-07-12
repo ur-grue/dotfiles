@@ -121,11 +121,13 @@ if [ "$MODE" = "check" ]; then
   step "TROCKENLAUF — nichts wird verändert ($TOTAL Pakete im Brewfile)"
   if command -v brew >/dev/null 2>&1; then
     miss=0
-    for f in "${BREWS[@]}"; do
+    # ${arr[@]+"${arr[@]}"}: bash-3.2-sicher bei LEEREM Array unter set -u
+    # (blankes "${arr[@]}" würde dort „unbound variable" werfen).
+    for f in ${BREWS[@]+"${BREWS[@]}"}; do
       if brew list --formula --versions "$f" >/dev/null 2>&1; then printf '%s\n' "  ${GREEN}✔${R} ${DIM}$f${R}"
       else printf '%s\n' "  ${YELLOW}○${R} $f ${DIM}(würde installiert)${R}"; miss=$((miss+1)); fi
     done
-    for f in "${CASKS[@]}"; do
+    for f in ${CASKS[@]+"${CASKS[@]}"}; do
       if brew list --cask --versions "$f" >/dev/null 2>&1; then printf '%s\n' "  ${GREEN}✔${R} ${DIM}$f${R}"
       else printf '%s\n' "  ${YELLOW}○${R} $f ${DIM}(cask, würde installiert)${R}"; miss=$((miss+1)); fi
     done
@@ -152,7 +154,11 @@ fi
 
 # ---- 2. sudo cachen + still am Leben halten ----
 step "Adminrechte einmalig (nur für App-/Cask-Installer)…"
-sudo -v || warn "Ohne sudo scheitern evtl. einzelne Casks — Lauf geht trotzdem weiter."
+# _HAVE_SUDO steuert install_packages: OHNE sudo würde ein pkg-Cask (citrix/teams/
+# tailscale) sein Passwort unsichtbar UNTER dem Dashboard abfragen -> Hänger. Dann
+# lieber Admin-Casks sauber überspringen. Der Prompt HIER ist noch sichtbar.
+if sudo -v 2>/dev/null; then _HAVE_SUDO=1
+else _HAVE_SUDO=0; warn "Kein sudo — Admin-Casks werden übersprungen (kein Hänger); später mit sudo erneut."; fi
 ( while kill -0 "$$" 2>/dev/null; do sudo -n -v 2>/dev/null || true; sleep 50; done ) & SUDO_PID=$!
 
 # ---- 3. Homebrew (Gate) ----
@@ -198,6 +204,11 @@ install_packages() {
     d=$((d+1)); printf '%s %s cask %s\n' "$d" "$TOTAL" "$f" > "$LOGD/install.status"
     if brew list --cask --versions "$f" >/dev/null 2>&1; then
       printf '  OK  [%s/%s] %s  (vorhanden)\n'   "$d" "$TOTAL" "$f"
+    elif [ "${_HAVE_SUDO:-1}" = 0 ] && ! sudo -n -v 2>/dev/null; then
+      # Kein sudo verfügbar -> ein pkg-Cask würde unsichtbar auf's Passwort warten.
+      # Sauber überspringen statt das Dashboard einfrieren zu lassen.
+      echo "$f (cask — kein sudo)" >> "$LOGD/install.fail"
+      printf '  X   [%s/%s] %s  UEBERSPRUNGEN (kein sudo)\n' "$d" "$TOTAL" "$f"
     elif brew install --cask "$f" >>"$LOGD/install.log" 2>&1; then
       printf '  OK  [%s/%s] %s  (installiert)\n' "$d" "$TOTAL" "$f"
     else echo "$f (cask)" >> "$LOGD/install.fail"; printf '  X   [%s/%s] %s  FEHLGESCHLAGEN -> uebersprungen\n' "$d" "$TOTAL" "$f"; fi
@@ -327,6 +338,10 @@ if [ "$TUI" = 1 ]; then
   # vor dem internen return abstürzt (z.B. durch OOM-Kill vor Schleifenende).
   ( set +eu; install_packages >"$LOGD/stream" 2>&1; echo $? >"$LOGD/install.rc" ) & P_INS=$!
   dashboard
+  # dashboard() begrenzt sich selbst (DASH_TIMEOUT/-ITERS). Kehrt es zurück, OHNE dass
+  # ALLE .rc-Sentinels da sind, hängt ein Job -> NICHT ewig auf `wait` blockieren
+  # (das machte die Dashboard-Grenze wirkungslos), sondern die Reste killen.
+  _all_done || kill "$P_OMZ" "$P_REPOS" "$P_MAC" "$P_INS" 2>/dev/null || true
   wait "$P_OMZ" "$P_REPOS" "$P_MAC" "$P_INS" 2>/dev/null
 else
   install_packages
@@ -377,6 +392,7 @@ else warn "macOS-Defaults — Fehler (Log: $LOGD/macos.log)";
 # --promptString durchreichen. --promptDefaults ist IMMER dabei -> chezmoi promptet
 # nie (kein Hang), und das Array ist nie leer (kein bash-3.2 `set -u`-Crash).
 step "Dotfiles anwenden (chezmoi)…"
+printf '%s\n' "  ${DIM}(baut still Runtimes & nvim-Plugins vor — kann ein paar Minuten dauern)${R}"
 CZ_ARGS=(--promptDefaults)
 if [ -t 0 ] && [ -t 1 ]; then
   _DEF_NAME="$(git config --global user.name 2>/dev/null || true)"
@@ -394,18 +410,29 @@ if chezmoi init --apply --source "$REPO_DIR" "${CZ_ARGS[@]}" >>"$LOG" 2>&1; then
   _SCHE_V="✔ Dotfiles (chezmoi)";         _SCHE_C="${GREEN}✔${R} Dotfiles  ${DIM}(chezmoi)${R}"
 else warn "chezmoi — Fehler (Details: $LOG).";
   _SCHE_V="▲ Dotfiles (chezmoi — Fehler)"; _SCHE_C="${YELLOW}▲${R} Dotfiles  ${DIM}(chezmoi — Fehler)${R}"; fi
+# git-Identität kann leer sein, wenn oben nur Enter gedrückt wurde -> ehrlich melden.
+_OPEN_GITID=0
+{ [ -n "$(git config --global user.name 2>/dev/null)" ] && [ -n "$(git config --global user.email 2>/dev/null)" ]; } || _OPEN_GITID=1
 
-# ---- 6b. Runtimes (mise install) ----
-# mise.toml ist jetzt durch chezmoi vorhanden; mise install lädt node/python/ruby.
-# Ohne diesen Schritt schlägt `mise exec -- npm install …` (Step 7) fehl.
-step "Runtimes installieren (mise install)…"
+# ---- 6b. Runtimes (mise) ----
+# mise install lief bereits in chezmoi (run_once_10-mise). Hier VERIFIZIEREN und
+# nur bei Bedarf nachziehen. WICHTIG: `mise install` OHNE config.toml exitet 0 und
+# installiert NICHTS -> deshalb reicht Exit 0 als Erfolgsbeweis nicht. Erst wenn
+# `mise ls --installed` echte Runtimes zeigt, ist das ✔ ehrlich.
+step "Runtimes prüfen (mise: node · python · ruby)…"
 _SMIS_V="▲ Runtimes (mise nicht gefunden)"; _SMIS_C="${YELLOW}▲${R} Runtimes  ${DIM}(mise install manuell)${R}"
 if command -v mise >/dev/null 2>&1; then
-  if mise install >>"$LOG" 2>&1; then
-    ok "Runtimes (node · python · ruby)"
-    _SMIS_V="✔ Runtimes (mise)"; _SMIS_C="${GREEN}✔${R} Runtimes  ${DIM}(node · python · ruby)${R}"
-  else warn "mise install — Fehler (Log: $LOG)"
-    _SMIS_V="▲ Runtimes (mise — Fehler)"; _SMIS_C="${YELLOW}▲${R} Runtimes  ${DIM}(mise install manuell)${R}"; fi
+  if [ ! -f "$HOME/.config/mise/config.toml" ]; then
+    warn "mise-Config fehlt (chezmoi unvollständig?) — keine Runtimes gesetzt"
+    _SMIS_V="▲ Runtimes (mise.toml fehlt)"; _SMIS_C="${YELLOW}▲${R} Runtimes  ${DIM}(mise.toml fehlt → chezmoi?)${R}"
+  else
+    mise install >>"$LOG" 2>&1 || true
+    if mise ls --installed 2>/dev/null | grep -q .; then
+      ok "Runtimes (node · python · ruby)"
+      _SMIS_V="✔ Runtimes (mise)"; _SMIS_C="${GREEN}✔${R} Runtimes  ${DIM}(node · python · ruby)${R}"
+    else warn "mise install — keine Runtimes installiert (Log: $LOG)"
+      _SMIS_V="▲ Runtimes (mise — Fehler)"; _SMIS_C="${YELLOW}▲${R} Runtimes  ${DIM}(mise install manuell)${R}"; fi
+  fi
 else warn "mise nicht gefunden — brew install mise, dann mise install"; fi
 
 # ---- 7. Claude Code ----
@@ -531,6 +558,9 @@ _bl "  ▸  GPG-Key importieren  →  pass init  →  pass insert motion/api-key
     "  ${BLUE}▸${R}  GPG-Key importieren  ${DIM}→${R}  pass init  ${DIM}→${R}  pass insert motion/api-key"
 _bl "  ▸  morgen (Terminal-Briefing) liegt in ~/.local/bin — braucht nur den Key" \
     "  ${BLUE}▸${R}  ${CYAN}morgen${R} ${DIM}(Briefing in ~/.local/bin — braucht nur den Motion-Key)${R}"
+[ "${_OPEN_GITID:-0}" = 1 ] && \
+  _bl "  ▸  git-Identität setzen: git config --global user.name / user.email" \
+      "  ${BLUE}▸${R}  git-Identität:  ${CYAN}git config --global user.name / user.email${R}"
 [ "$_OPEN_GH" = 1 ] && \
   _bl "  ▸  gh auth login" "  ${BLUE}▸${R}  ${CYAN}gh auth login${R}"
 [ "$_OPEN_TS" = 1 ] && \
@@ -544,4 +574,9 @@ _bl "  ▸  nvim :checkhealth  (Plugins vorgebaut)  ·  p10k vorkonfiguriert" \
 _bemp
 printf '%s\n' "${PINK}╚═══════════════════════════════════════════════════════════════════════════╝${R}"
 printf '  %s %s\n' "${DIM}Log:${R}" "$LOG"
-[ -s "$LOGD/install.fail" ] && printf '  %s\n' "${YELLOW}Übersprungene Pakete nachinstallieren: brew install <name>${R}"
+# if statt `&& …`: sonst wäre DIESE letzte Zeile bei Voll-Erfolg der Exit-Code (1),
+# und `./setup.sh && …` würde einen perfekten Lauf als Fehlschlag werten.
+if [ -s "$LOGD/install.fail" ]; then
+  printf '  %s\n' "${YELLOW}Übersprungene Pakete nachinstallieren: brew install <name>${R}"
+fi
+exit 0
