@@ -343,5 +343,5 @@ cat <<'NEXT'
    • tailscale up · Citrix-Store · claude starten + Abo-Login
    • Motion-Key für `morgen`:  pass insert motion/api-key
    • nvim: :checkhealth (Plugins sind bereits vorgebaut) · p10k configure
-   • Chrome: ./scripts/chrome-extensions.sh · Caps Lock -> Control · FileVault
+   • Chrome: ./scripts/chrome-extensions.sh · FileVault aktivieren
 NEXT
