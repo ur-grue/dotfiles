@@ -25,6 +25,7 @@ brew "procs"                      # ps
 brew "sd"                         # sed (einfach)
 brew "hyperfine"                  # benchmarking
 brew "btop"                       # top
+brew "mole"                       # Mac aufräumen/optimieren (Deep-Clean-CLI, mole.fit)
 brew "tldr"                       # man (Beispiele)
 brew "lazygit"                    # git TUI
 brew "yazi"                       # Datei-Manager (ersetzt ranger, Bildvorschau)

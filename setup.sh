@@ -43,8 +43,11 @@ warn() { printf '%s\n' "  ${YELLOW}▲ $*${R}"; logline "WARN $*"; }
 die()  { printf '%s\n' "  ${RED}✖ $*${R}"; logline "DIE $*"; exit 1; }
 
 # ---- Traps ----
-# cleanup läuft bei JEDEM Exit: Cursor wieder sichtbar, Hintergrund-Helfer killen.
-cleanup(){ printf '\033[?25h'; kill "${CAFF_PID:-}" "${SUDO_PID:-}" 2>/dev/null || true; }
+# cleanup läuft bei JEDEM Exit: Cursor sichtbar, Hintergrund-Helfer killen und das
+# Scratch-Verzeichnis (mktemp -d) entfernen. Die Job-Logs sind da bereits in den
+# bleibenden $HOME-Log kopiert; LOGD ist reines Wegwerf-Scratch -> kein Leak.
+cleanup(){ printf '\033[?25h'; kill "${CAFF_PID:-}" "${SUDO_PID:-}" 2>/dev/null || true
+  [ -n "${LOGD:-}" ] && [ -d "${LOGD:-}" ] && rm -rf "$LOGD" 2>/dev/null || true; }
 # on_int fängt Strg-C / TERM ab: aufräumen und mit 130 SAUBER beenden (sonst
 # würde der Lauf mit nacktem cleanup weiterlaufen bzw. nicht definiert enden).
 on_int(){ trap - INT TERM; cleanup; printf '\n%s\n' "${YELLOW:-}▲ Abgebrochen (Strg-C).${R:-}"; logline "INT/TERM — abgebrochen"; exit 130; }
