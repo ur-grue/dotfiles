@@ -25,13 +25,24 @@ LOGD="$(mktemp -d)"
 START=$(date +%s)
 : > "$LOG"
 
+# ---- Branding ----
+BRAND="${BRAND:-ur-grue net inst}"     # Banner-Titel (überschreibbar per Env)
+
 # ---- Farben / TTY / Dashboard-Erkennung ----
+# Fallout-Amber-Theme: warmes Bernstein-Terminal (Vault-Tec-Vibe). Die Namen
+# (PINK/CYAN/GREEN/…) bleiben, damit das restliche Skript automatisch recolored.
 COLOR=0; TUI=0
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then COLOR=1; fi
 if [ "$COLOR" = 1 ] && [ "$PLAIN" = 0 ]; then TUI=1; fi
 if [ "$COLOR" = 1 ]; then
-  R=$'\033[0m'; PINK=$'\033[38;5;198m'; CYAN=$'\033[38;5;51m'; GREEN=$'\033[38;5;46m'
-  YELLOW=$'\033[38;5;226m'; PURPLE=$'\033[38;5;135m'; DIM=$'\033[38;5;240m'; RED=$'\033[38;5;196m'
+  R=$'\033[0m'
+  PINK=$'\033[38;5;208m'    # Orange  — Struktur, Rahmen, Brand
+  CYAN=$'\033[38;5;214m'    # Amber   — Header, Labels
+  GREEN=$'\033[38;5;220m'   # Gold    — OK, Balken-Fill
+  YELLOW=$'\033[38;5;172m'  # Dunkelamber — Warnung, Spinner
+  PURPLE=$'\033[38;5;130m'  # (kaum genutzt)
+  DIM=$'\033[38;5;94m'      # Braun-Amber — Log, inaktiv, Rahmen-matt
+  RED=$'\033[38;5;196m'     # Rot     — Fehler (bewusst Signalfarbe)
 else R=''; PINK=''; CYAN=''; GREEN=''; YELLOW=''; PURPLE=''; DIM=''; RED=''; fi
 FR=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏); NF=${#FR[@]}; _fri=0; _first=1
 
@@ -46,7 +57,7 @@ die()  { printf '%s\n' "  ${RED}✖ $*${R}"; logline "DIE $*"; exit 1; }
 # cleanup läuft bei JEDEM Exit: Cursor sichtbar, Hintergrund-Helfer killen und das
 # Scratch-Verzeichnis (mktemp -d) entfernen. Die Job-Logs sind da bereits in den
 # bleibenden $HOME-Log kopiert; LOGD ist reines Wegwerf-Scratch -> kein Leak.
-cleanup(){ printf '\033[?25h'; kill "${CAFF_PID:-}" "${SUDO_PID:-}" 2>/dev/null || true
+cleanup(){ printf '\033[r\033[?25h'; kill "${CAFF_PID:-}" "${SUDO_PID:-}" 2>/dev/null || true
   [ -n "${LOGD:-}" ] && [ -d "${LOGD:-}" ] && rm -rf "$LOGD" 2>/dev/null || true; }
 # on_int fängt Strg-C / TERM ab: aufräumen und mit 130 SAUBER beenden (sonst
 # würde der Lauf mit nacktem cleanup weiterlaufen bzw. nicht definiert enden).
@@ -57,11 +68,15 @@ trap 'ec=$?; if [ "$ec" -ne 0 ]; then printf "\n%s\n" "${RED:-}✖ Fehler (Exit 
 
 # ---- Banner ----
 banner() {
+  local w=46 title len pl pr
+  title="$(printf '%s' "$BRAND" | tr '[:lower:]' '[:upper:]')"   # bash-3.2-kompatibel (kein ${^^})
+  len=${#title}; [ "$len" -gt "$w" ] && { title="$(printf '%s' "$title" | cut -c1-"$w")"; len=$w; }
+  pl=$(( (w - len) / 2 )); pr=$(( w - len - pl ))
   printf '\n'
   printf '%s\n' "${PINK}   ▟████████████████████████████████████████████▙${R}"
-  printf '%s\n' "${PINK}   █${CYAN}     A U T O P U N K   //   B O O T S T R A P     ${PINK}█${R}"
+  printf '%s%*s%s%*s%s\n' "${PINK}   █${CYAN}" "$pl" '' "$title" "$pr" '' "${PINK}█${R}"
   printf '%s\n' "${PINK}   ▜████████████████████████████████████████████▛${R}"
-  printf '%s\n' "${DIM}   macOS dev-env · $(sw_vers -productVersion 2>/dev/null || echo '?') · $(date '+%Y-%m-%d %H:%M')${R}"
+  printf '%s\n' "${DIM}   VAULT-TEC dev-env · macOS $(sw_vers -productVersion 2>/dev/null || echo '?') · $(date '+%Y-%m-%d %H:%M')${R}"
 }
 banner
 
@@ -152,34 +167,39 @@ setup_omz() {
 }
 
 # Kernstück: EINZELNE Paketinstallation mit Fehler-Isolation.
+# Gibt EINE saubere Zeile pro Paket auf stdout aus (-> Live-Log-Stream). Der
+# laute brew-Output landet separat in install.log. install.status treibt das
+# Panel (aktuelles Paket), install.fail/.rc sind die Sentinels.
 install_packages() {
   set +eu
   local d=0 f
   : > "$LOGD/install.fail"
   for f in "${BREWS[@]}"; do
     d=$((d+1)); printf '%s %s formula %s\n' "$d" "$TOTAL" "$f" > "$LOGD/install.status"
-    printf '  [%s/%s] %s\n' "$d" "$TOTAL" "$f"
     if brew list --formula --versions "$f" >/dev/null 2>&1; then
-      printf '        vorhanden\n'
-    elif brew install --formula "$f" >>"$LOGD/install.log" 2>&1; then :
-    else echo "$f (formula)" >> "$LOGD/install.fail"; printf '        %s\n' "FEHLGESCHLAGEN -> uebersprungen"; fi
+      printf '  OK  [%s/%s] %s  (vorhanden)\n'   "$d" "$TOTAL" "$f"
+    elif brew install --formula "$f" >>"$LOGD/install.log" 2>&1; then
+      printf '  OK  [%s/%s] %s  (installiert)\n' "$d" "$TOTAL" "$f"
+    else echo "$f (formula)" >> "$LOGD/install.fail"; printf '  X   [%s/%s] %s  FEHLGESCHLAGEN -> uebersprungen\n' "$d" "$TOTAL" "$f"; fi
   done
   for f in "${CASKS[@]}"; do
     d=$((d+1)); printf '%s %s cask %s\n' "$d" "$TOTAL" "$f" > "$LOGD/install.status"
-    printf '  [%s/%s] %s\n' "$d" "$TOTAL" "$f"
     if brew list --cask --versions "$f" >/dev/null 2>&1; then
-      printf '        vorhanden\n'
-    elif brew install --cask "$f" >>"$LOGD/install.log" 2>&1; then :
-    else echo "$f (cask)" >> "$LOGD/install.fail"; printf '        %s\n' "FEHLGESCHLAGEN -> uebersprungen"; fi
+      printf '  OK  [%s/%s] %s  (vorhanden)\n'   "$d" "$TOTAL" "$f"
+    elif brew install --cask "$f" >>"$LOGD/install.log" 2>&1; then
+      printf '  OK  [%s/%s] %s  (installiert)\n' "$d" "$TOTAL" "$f"
+    else echo "$f (cask)" >> "$LOGD/install.fail"; printf '  X   [%s/%s] %s  FEHLGESCHLAGEN -> uebersprungen\n' "$d" "$TOTAL" "$f"; fi
   done
   printf '%s %s done -\n' "$d" "$TOTAL" > "$LOGD/install.status"
   wc -l < "$LOGD/install.fail" | tr -d ' ' > "$LOGD/install.rc"
 }
 
-# ---- Dashboard ----
-# Alle Farb-/Zustandsvariablen defensiv mit ${var:-} — diese Funktionen laufen in
-# $(...)-Subshells; unter set -u würde EINE ungebundene Variable die Subshell
-# killen und (bei laufender Schleife) Fehler spammen. ${:-} macht das unmöglich.
+# ---- Dashboard (Fallout-Amber, scroll-region-stabil) --------------------------
+# Architektur: EIN Zeichner (dieser Loop) ist der einzige TTY-Schreiber. Oben ein
+# Scroll-Fenster mit dem Live-Log der Paketinstallation, unten ein FESTES Panel
+# (Balken/Zähler/Fails + Job-Status). Kein "N Zeilen hoch"-Raten mehr: eine echte
+# DECSTBM-Scroll-Region hält das Panel unten stabil, egal wie viel oben scrollt.
+# Alle Farb-/Zustandsvariablen defensiv mit ${var:-} (Subshells unter set -u).
 mkbar() { local d=${1:-0} t=${2:-1} w=12 f i s; [ "${t:-0}" -gt 0 ] 2>/dev/null || t=1; f=$(( d*w/t )); [ "$f" -gt "$w" ] && f=$w; [ "$f" -lt 0 ] && f=0
   s="${GREEN:-}"; i=0; while [ "$i" -lt "$f" ]; do s="$s█"; i=$((i+1)); done
   s="$s${DIM:-}"; while [ "$i" -lt "$w" ]; do s="$s░"; i=$((i+1)); done; printf '%s%s' "$s" "${R:-}"; }
@@ -191,43 +211,75 @@ sym_job() { local n="${1:-}" rc
   if [ -f "$LOGD/$n.rc" ]; then rc=$(cat "$LOGD/$n.rc" 2>/dev/null||echo 1)
     [ "${rc:-1}" = 0 ] && printf '%s' "${GREEN:-}✔${R:-}" || printf '%s' "${YELLOW:-}▲${R:-}"
   else printf '%s' "${CYAN:-}${FR[${_fri:-0}]:-}${R:-}"; fi; }
-dash_row() { local label="${1:-}" name="${2:-}" s line
+panel_job() { local label="${1:-}" name="${2:-}" s line
   s="$(sym_job "$name")"
-  line="$(tail -n1 "$LOGD/$name.log" 2>/dev/null | tr -d '\r' | tr -dc '[:print:]' | cut -c1-30)"
-  printf '\033[2K%s\n' "${DIM:-}║${R:-} $s ${PINK:-}${label}${R:-} ${DIM:-}${line:-}${R:-}"; }
-dash_draw() {
-  [ "${_first:-1}" = 0 ] && printf '\033[6A'; _first=0
+  line="$(tail -n1 "$LOGD/$name.log" 2>/dev/null | tr -d '\r' | tr -dc '[:print:]' | cut -c1-28)"
+  printf '%s\n' "${DIM:-}║${R:-} $s ${CYAN:-}${label}${R:-}  ${DIM:-}${line:-}${R:-}"; }
+# Baut die 6 Panel-Zeilen als reine Strings (KEINE Cursorbewegung hier).
+panel_lines() {
   local d=0 t=${TOTAL:-1} kind cur="…" fails=0 bar
   [ -r "$LOGD/install.status" ] && { read -r d t kind cur < "$LOGD/install.status" 2>/dev/null || true; }
-  [ -s "$LOGD/install.fail" ] && fails=$(wc -l < "$LOGD/install.fail" | tr -d ' ')
-  bar="$(mkbar "${d:-0}" "${t:-${TOTAL:-1}}")"; cur="$(printf '%s' "${cur:-}" | cut -c1-16)"
-  printf '\033[2K%s\n' "${DIM:-}╔══ ${PINK:-}PARALLEL SUBSYSTEMS${DIM:-} ═══════════════════════════╗${R:-}"
-  printf '\033[2K%s\n' "${DIM:-}║${R:-} $(sym_pkg) ${PINK:-}PACKAGES${R:-} ${bar:-} ${CYAN:-}${d:-0}/${t:-0}${R:-} ${DIM:-}${cur:-}${R:-}$([ "${fails:-0}" -gt 0 ] && printf ' %s' "${RED:-}✖${fails}${R:-}")"
-  dash_row "SHELL  " omz
-  dash_row "CLONES " repos
-  dash_row "SYSTEM " macos
-  printf '\033[2K%s\n' "${DIM:-}╚═════════════════════════════════════════════════╝${R:-}"
+  [ -s "$LOGD/install.fail" ] && fails=$(wc -l < "$LOGD/install.fail" 2>/dev/null | tr -d ' ')
+  bar="$(mkbar "${d:-0}" "${t:-${TOTAL:-1}}")"; cur="$(printf '%s' "${cur:-}" | cut -c1-18)"
+  printf '%s\n' "${DIM:-}╔══ ${CYAN:-}VAULT-TEC SUBSYSTEMS${DIM:-} ══════════════════════════╗${R:-}"
+  printf '%s\n' "${DIM:-}║${R:-} $(sym_pkg) ${CYAN:-}PACKAGES${R:-} ${bar:-} ${GREEN:-}${d:-0}/${t:-0}${R:-} ${DIM:-}${cur:-}${R:-}$([ "${fails:-0}" -gt 0 ] && printf ' %s' "${RED:-}✖${fails}${R:-}")"
+  panel_job "SHELL " omz
+  panel_job "CLONES" repos
+  panel_job "SYSTEM" macos
+  printf '%s\n' "${DIM:-}╚═════════════════════════════════════════════════╝${R:-}"
+}
+# Kippt neue Stream-Zeilen ins Log-Fenster (auf Breite gekürzt -> kein Umbruch).
+# Nutzt/aktualisiert das globale _seen; druckt direkt auf die TTY.
+_flush_stream() {
+  local cols="${1:-80}" total
+  total=$(wc -l < "$LOGD/stream" 2>/dev/null | tr -d ' '); total=${total:-0}
+  if [ "$total" -gt "${_seen:-0}" ]; then
+    sed -n "$(( ${_seen:-0} + 1 )),${total}p" "$LOGD/stream" 2>/dev/null \
+      | while IFS= read -r ln; do printf '%s%s%s\n' "${DIM:-}" "$(printf '%s' "$ln" | cut -c1-$(( cols - 1 )))" "${R:-}"; done
+    _seen=$total
+  fi
+}
+_all_done() { [ -f "$LOGD/install.rc" ] && [ -f "$LOGD/omz.rc" ] && [ -f "$LOGD/repos.rc" ] && [ -f "$LOGD/macos.rc" ]; }
+# Fallback ohne Cursor-Tricks (kleines/unbekanntes Terminal): einfach streamen.
+dashboard_plain() {
+  local i=0 max=${DASH_MAX_ITERS:-60000} t0=$SECONDS to=${DASH_TIMEOUT:-5400}; _seen=0
+  while :; do
+    _flush_stream 200
+    if _all_done; then _flush_stream 200; break; fi
+    i=$((i+1)); { [ "$i" -ge "$max" ] || [ $(( SECONDS - t0 )) -ge "$to" ]; } && break
+    sleep 0.2
+  done
 }
 dashboard() {
-  printf '\033[?25l'
-  # Abbruch-Bedingungen (Endlosschleifen-Schutz):
-  #  1) alle vier Sentinels (install/omz/repos/macos.rc) da  -> normaler Abschluss
-  #  2) harter Wall-Clock-Timeout (default 90 min)            -> Hintergrund läuft weiter
-  #  3) Max-Iterationen als zusätzlicher Backstop
-  # NF/_fri defensiv, damit die Schleife selbst nie an set -u stirbt.
-  local i=0 max=${DASH_MAX_ITERS:-60000} t0=$SECONDS to=${DASH_TIMEOUT:-5400} nf=${NF:-1}
+  local rows cols; rows=$(tput lines 2>/dev/null || echo 0); cols=$(tput cols 2>/dev/null || echo 0)
+  # Fähigkeits-Check: zu klein / kein tput -> robuster Streaming-Fallback.
+  if [ "${rows:-0}" -lt 12 ] || [ "${cols:-0}" -lt 64 ]; then dashboard_plain; return; fi
+  local PH=6 top logbot i=0 max=${DASH_MAX_ITERS:-60000} t0=$SECONDS to=${DASH_TIMEOUT:-5400} nf=${NF:-1} k=0
   [ "$nf" -gt 0 ] 2>/dev/null || nf=1
+  logbot=$(( rows - PH )); top=$(( rows - PH + 1 )); _seen=0
+  printf '\033[?25l'                                   # Cursor aus
+  while [ "$k" -lt "$PH" ]; do printf '\n'; k=$((k+1)); done   # Platz fürs Panel reservieren
+  printf '\033[1;%dr' "$logbot"                        # Scroll-Region = 1..logbot
+  printf '\033[%d;1H' "$logbot"                        # Cursor an Log-Unterkante
   while :; do
-    dash_draw
-    if [ -f "$LOGD/install.rc" ] && [ -f "$LOGD/omz.rc" ] && [ -f "$LOGD/repos.rc" ] && [ -f "$LOGD/macos.rc" ]; then dash_draw; break; fi
-    i=$((i+1))
-    if [ "$i" -ge "$max" ] || [ $(( SECONDS - t0 )) -ge "$to" ]; then
-      printf '\033[2K%s\n' "${YELLOW:-}▲ Dashboard-Timeout — Subsysteme laufen im Hintergrund weiter.${R:-}"
-      break
+    _flush_stream "$cols"                              # 1) neue Log-Zeilen (scrollen oben)
+    printf '\0337'; _draw_panel "$top"; printf '\0338' # 2) Panel unten (Cursor sichern/zurück)
+    if _all_done; then
+      _flush_stream "$cols"; printf '\0337'; _draw_panel "$top"; printf '\0338'; break
     fi
+    i=$((i+1))
+    { [ "$i" -ge "$max" ] || [ $(( SECONDS - t0 )) -ge "$to" ]; } && break
     _fri=$(( ( ${_fri:-0} + 1 ) % nf )); sleep 0.12
   done
-  printf '\033[?25h'
+  printf '\033[r'                                      # Scroll-Region zurücksetzen (WICHTIG)
+  printf '\033[%d;1H\033[?25h' "$rows"                 # Cursor unter Panel, sichtbar
+}
+# Zeichnet die 6 Panel-Zeilen ABSOLUT positioniert (kein \n -> kein Fremd-Scroll).
+_draw_panel() {
+  local top="${1:-1}" j=0 pl
+  panel_lines | while IFS= read -r pl; do
+    printf '\033[%d;1H\033[2K%s' "$(( top + j ))" "$pl"; j=$((j+1))
+  done
 }
 
 # ---- 4. PARALLEL-PHASE (Fehler hier sind nie fatal) ----
@@ -236,7 +288,7 @@ dashboard() {
 # Dashboard-Loop endlos Fehler spammen lassen. Die gesamte Phase ist best-effort.
 step "Subsysteme starten — Pakete einzeln, Rest parallel"
 set +eu
-rm -f "$LOGD"/*.rc "$LOGD/install.status"; : > "$LOGD/install.log"
+rm -f "$LOGD"/*.rc "$LOGD/install.status"; : > "$LOGD/install.log"; : > "$LOGD/stream"
 # Job-Bodies zusätzlich in `set +eu` kapseln (Defense-in-depth): so wird die
 # .rc-Sentinel-Datei IMMER geschrieben — auch wenn eine Funktion unter set -e/-u
 # vorzeitig stürbe. Ohne die .rc bliebe der dashboard()-Loop hängen.
@@ -244,7 +296,8 @@ rm -f "$LOGD"/*.rc "$LOGD/install.status"; : > "$LOGD/install.log"
 ( set +eu; bash "$REPO_DIR/scripts/clone-repos.sh"    >"$LOGD/repos.log" 2>&1; echo $? >"$LOGD/repos.rc" ) & P_REPOS=$!
 ( set +eu; bash "$REPO_DIR/scripts/macos-defaults.sh" >"$LOGD/macos.log" 2>&1; echo $? >"$LOGD/macos.rc" ) & P_MAC=$!
 if [ "$TUI" = 1 ]; then
-  ( set +eu; install_packages >"$LOGD/install.log" 2>&1 ) & P_INS=$!
+  # Fortschrittszeilen -> stream (Live-Log); brew-Rauschen bleibt in install.log.
+  ( set +eu; install_packages >"$LOGD/stream" 2>&1 ) & P_INS=$!
   dashboard
   wait "$P_OMZ" "$P_REPOS" "$P_MAC" "$P_INS" 2>/dev/null
 else
