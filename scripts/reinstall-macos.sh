@@ -103,12 +103,25 @@ else
   warn "Kein ~/mac-backup-* gefunden — lief ./scripts/pre-wipe-backup.sh schon?"
 fi
 
-# 3) Zielmedium sichtbar machen (was gleich gelöscht wird).
+# 3) Freier Speicher: startosinstall läuft AUS dem System und muss den Installer
+# vor dem Löschen vorstagen -> braucht ~20 GB frei, sonst bricht es NACH dem
+# ERASE-Prompt ab ("nicht genügend freier Speicherplatz"). Früh warnen.
+FREE_GB="$(df -g / 2>/dev/null | awk 'NR==2{print $4}')"
+if [ -n "${FREE_GB:-}" ] && [ "${FREE_GB:-0}" -lt 20 ] 2>/dev/null; then
+  warn "Nur ${FREE_GB} GB frei — startosinstall braucht ~20 GB zum Vorstagen."
+  info "  → Platz schaffen: ${DIM}sudo tmutil deletelocalsnapshots / ; Papierkorb leeren${R}"
+  info "  → ODER speicher-unabhängig löschen: Systemeinstellungen ▸ Allgemein ▸"
+  info "    „Alle Inhalte & Einstellungen löschen\", oder Recovery (Power halten)."
+else
+  ok "Freier Speicher: ${FREE_GB:-?} GB"
+fi
+
+# 4) Zielmedium sichtbar machen (was gleich gelöscht wird).
 info "${DIM}Interne Datenträger (werden gelöscht):${R}"
 diskutil list internal 2>/dev/null | sed 's/^/    /' || diskutil list 2>/dev/null | sed 's/^/    /'
 echo
 
-# 4) Installer vorhanden? Sonst laden (bzw. Hinweis im Check-Modus).
+# 5) Installer vorhanden? Sonst laden (bzw. Hinweis im Check-Modus).
 if INSTALLER="$(find_installer)"; then
   ok "Installer: $INSTALLER"
 else
