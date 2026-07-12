@@ -342,6 +342,6 @@ cat <<'NEXT'
    • Apple-ID/iCloud · Ghostty öffnen · pass/GPG-Keys · gh auth login
    • tailscale up · Citrix-Store · claude starten + Abo-Login
    • Motion-Key für `morgen`:  pass insert motion/api-key
-   • nvim öffnen (Plugins) + :checkhealth · p10k configure
+   • nvim: :checkhealth (Plugins sind bereits vorgebaut) · p10k configure
    • Chrome: ./scripts/chrome-extensions.sh · Caps Lock -> Control · FileVault
 NEXT
