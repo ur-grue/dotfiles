@@ -40,10 +40,11 @@ if [ "$COLOR" = 1 ]; then
   CYAN=$'\033[38;5;214m'    # Amber   — Header, Labels
   GREEN=$'\033[38;5;220m'   # Gold    — OK, Balken-Fill
   YELLOW=$'\033[38;5;172m'  # Dunkelamber — Warnung, Spinner
-  PURPLE=$'\033[38;5;130m'  # (kaum genutzt)
+  PURPLE=$'\033[38;5;135m'  # Violett   — Summary-Header
+  BLUE=$'\033[38;5;75m'     # Teal/Cyan — Offen-Marker
   DIM=$'\033[38;5;94m'      # Braun-Amber — Log, inaktiv, Rahmen-matt
   RED=$'\033[38;5;196m'     # Rot     — Fehler (bewusst Signalfarbe)
-else R=''; PINK=''; CYAN=''; GREEN=''; YELLOW=''; PURPLE=''; DIM=''; RED=''; fi
+else R=''; PINK=''; CYAN=''; GREEN=''; YELLOW=''; PURPLE=''; BLUE=''; DIM=''; RED=''; fi
 FR=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏); NF=${#FR[@]}; _fri=0; _first=1
 
 # ---- Log + Ausgabe ----
@@ -61,15 +62,18 @@ ask_yn() { local q="${1:-?}" a=; printf '%s' "  ${CYAN}${q} [y/N] ${R}"
 # cleanup läuft bei JEDEM Exit: Cursor sichtbar, Hintergrund-Helfer killen und das
 # Scratch-Verzeichnis (mktemp -d) entfernen. Die Job-Logs sind da bereits in den
 # bleibenden $HOME-Log kopiert; LOGD ist reines Wegwerf-Scratch -> kein Leak.
-cleanup(){ printf '\033[r\033[?25h'; kill "${CAFF_PID:-}" "${SUDO_PID:-}" 2>/dev/null || true
+cleanup(){ printf '\033[?25h'; kill "${CAFF_PID:-}" "${SUDO_PID:-}" 2>/dev/null || true
   [ -n "${LOGD:-}" ] && [ -d "${LOGD:-}" ] && rm -rf "$LOGD" 2>/dev/null || true; }
 # on_int fängt Strg-C / TERM ab: Parallel-Jobs (brew/git) mit-killen (die laufen
 # sonst verwaist weiter), aufräumen und mit 130 SAUBER beenden. Die Job-PIDs nur
 # HIER killen (nicht in cleanup/EXIT), da sie bei normalem Ende schon fertig sind
 # und ihre PIDs dann fremd wiederverwendet sein könnten.
+# \033[r hier (nicht in cleanup): Scroll-Region nur bei Abbruch mitten im Dashboard
+# zurücksetzen; beim normalen Ende macht dashboard() das selbst — ein zweites \033[r
+# in cleanup() hat Ghostty als visuellen Clear interpretiert.
 on_int(){ trap - INT TERM
   kill "${P_INS:-}" "${P_OMZ:-}" "${P_REPOS:-}" "${P_MAC:-}" 2>/dev/null || true
-  cleanup; printf '\n%s\n' "${YELLOW:-}▲ Abgebrochen (Strg-C).${R:-}"; logline "INT/TERM — abgebrochen"; exit 130; }
+  printf '\033[r'; cleanup; printf '\n%s\n' "${YELLOW:-}▲ Abgebrochen (Strg-C).${R:-}"; logline "INT/TERM — abgebrochen"; exit 130; }
 trap cleanup EXIT
 trap on_int INT TERM
 trap 'ec=$?; if [ "$ec" -ne 0 ]; then printf "\n%s\n" "${RED:-}✖ Fehler (Exit $ec) Zeile ${LINENO}: ${BASH_COMMAND}${R:-}"; logline "ERR ${LINENO}: ${BASH_COMMAND}"; printf "%s\n" "  ${DIM:-}Log: ${LOG}${R:-}"; fi' ERR
@@ -324,50 +328,82 @@ else
 fi
 set -eu
 
-# ---- 5. Report der Parallel-Phase ----
+# ---- 5. Parallel-Phase: Status sammeln ----
 step "Ergebnis"
 if [ -s "$LOGD/install.fail" ]; then
-  N=$(wc -l < "$LOGD/install.fail" | tr -d ' ')
-  warn "$N Paket(e) übersprungen — der Rest wurde installiert:"
+  _NF=$(wc -l < "$LOGD/install.fail" | tr -d ' ')
+  warn "${_NF} Paket(e) übersprungen — der Rest wurde installiert:"
   while IFS= read -r x; do printf '%s\n' "      ${DIM}· $x${R}"; done < "$LOGD/install.fail"
   { echo "== UEBERSPRUNGENE PAKETE =="; cat "$LOGD/install.fail"; } >> "$LOG"
-else ok "Alle $TOTAL Pakete installiert (oder bereits vorhanden)"; fi
-RC=$(cat "$LOGD/omz.rc"   2>/dev/null||echo 1); [ "$RC" = 0 ] && ok "Shell (oh-my-zsh)"   || warn "oh-my-zsh mit Fehlern (Log: $LOGD/omz.log)"
-RC=$(cat "$LOGD/repos.rc" 2>/dev/null||echo 1); [ "$RC" = 0 ] && ok "Repo-Klone"          || warn "Repo-Klone teils fehlgeschlagen — privat? -> gh auth login, dann ./scripts/clone-repos.sh"
-RC=$(cat "$LOGD/macos.rc" 2>/dev/null||echo 1); [ "$RC" = 0 ] && ok "macOS-Defaults"      || warn "macOS-Defaults mit Fehlern (Log: $LOGD/macos.log)"
+  _SPKG_V="▲ Pakete $(( TOTAL - _NF ))/${TOTAL}  (${_NF} übersprungen)"
+  _SPKG_C="${YELLOW}▲ Pakete $(( TOTAL - _NF ))/${TOTAL}${R}  ${DIM}(${_NF} übersprungen)${R}"
+else
+  ok "Alle $TOTAL Pakete installiert"
+  _SPKG_V="✔ Pakete ${TOTAL}/${TOTAL}"; _SPKG_C="${GREEN}✔ Pakete ${TOTAL}/${TOTAL}${R}"
+fi
 
-# ---- 6. Dotfiles (chezmoi — fragt Name/E-Mail) ----
+RC=$(cat "$LOGD/omz.rc"   2>/dev/null||echo 1)
+if [ "$RC" = 0 ]; then ok "Shell (oh-my-zsh)";
+  _SOMZ_V="✔ Shell (oh-my-zsh)";          _SOMZ_C="${GREEN}✔${R} Shell  ${DIM}(oh-my-zsh)${R}"
+else warn "oh-my-zsh — Fehler (Log: $LOGD/omz.log)";
+  _SOMZ_V="▲ Shell (oh-my-zsh — Fehler)"; _SOMZ_C="${YELLOW}▲${R} Shell  ${DIM}(oh-my-zsh — Fehler)${R}"; fi
+
+RC=$(cat "$LOGD/repos.rc" 2>/dev/null||echo 1)
+if [ "$RC" = 0 ]; then ok "Repo-Klone (~/dev)";
+  _SREP_V="✔ Repos (~/dev)";              _SREP_C="${GREEN}✔${R} Repos  ${DIM}(~/dev geklont)${R}"
+else warn "Repo-Klone — privat? gh auth login, dann ./scripts/clone-repos.sh";
+  _SREP_V="▲ Repos — Fehler (Auth?)";     _SREP_C="${YELLOW}▲${R} Repos  ${DIM}(Auth? → gh auth login)${R}"; fi
+
+RC=$(cat "$LOGD/macos.rc" 2>/dev/null||echo 1)
+if [ "$RC" = 0 ]; then ok "macOS-Defaults";
+  _SMAC_V="✔ macOS-Defaults";             _SMAC_C="${GREEN}✔${R} macOS-Defaults"
+else warn "macOS-Defaults — Fehler (Log: $LOGD/macos.log)";
+  _SMAC_V="▲ macOS-Defaults — Fehler";    _SMAC_C="${YELLOW}▲${R} macOS-Defaults  ${DIM}(Fehler)${R}"; fi
+
+# ---- 6. Dotfiles (chezmoi) ----
 step "Dotfiles anwenden (chezmoi)…"
-chezmoi init --apply --source "$REPO_DIR" || warn "chezmoi meldete Fehler — Ausgabe oben / im Log."
+if chezmoi init --apply --source "$REPO_DIR" >>"$LOG" 2>&1; then
+  ok "Dotfiles (chezmoi)"
+  _SCHE_V="✔ Dotfiles (chezmoi)";         _SCHE_C="${GREEN}✔${R} Dotfiles  ${DIM}(chezmoi)${R}"
+else warn "chezmoi — Fehler (Ausgabe im Log).";
+  _SCHE_V="▲ Dotfiles (chezmoi — Fehler)"; _SCHE_C="${YELLOW}▲${R} Dotfiles  ${DIM}(chezmoi — Fehler)${R}"; fi
 
 # ---- 7. Claude Code ----
 step "Claude Code (npm via mise)…"
-mise exec -- npm install -g @anthropic-ai/claude-code >>"$LOG" 2>&1 \
-  && ok "Claude Code installiert" \
-  || warn "Claude Code separat installieren (docs.claude.com/claude-code)."
+if mise exec -- npm install -g @anthropic-ai/claude-code >>"$LOG" 2>&1; then
+  ok "Claude Code"
+  _SCLA_V="✔ Claude Code";                _SCLA_C="${GREEN}✔${R} Claude Code"
+else warn "Claude Code separat installieren: docs.claude.com/claude-code";
+  _SCLA_V="▲ Claude Code — manuell";      _SCLA_C="${YELLOW}▲${R} Claude Code  ${DIM}(manuell nachinstallieren)${R}"; fi
 
-# ---- 8. Interaktive Anmeldungen (optional) ----
-# Diese Schritte brauchen ZWINGEND einen Menschen (Browser-OAuth/2FA) — beim
-# Frisch-Setup sitzt der aber davor. Also inline anbieten, statt in eine
-# Nachher-Checkliste zu verschieben. Alles optional, Default NEIN, nie fatal.
+# ---- 8. Interaktive Anmeldungen ----
 # Überspringen komplett: SETUP_NO_LOGIN=1 ./setup.sh
+_SGH_V="· GitHub (übersprungen)"; _SGH_C="${DIM}· GitHub (übersprungen)${R}"; _OPEN_GH=1
+_STS_V="· Tailscale (übersprungen)"; _STS_C="${DIM}· Tailscale (übersprungen)${R}"; _OPEN_TS=1
+
 if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ]; then
   step "Anmeldungen (optional — jetzt erledigen erspart die Nachher-Checkliste)"
   if command -v gh >/dev/null 2>&1; then
     if gh auth status >/dev/null 2>&1; then
       ok "GitHub bereits angemeldet"
+      _SGH_V="✔ GitHub (angemeldet)"; _SGH_C="${GREEN}✔${R} GitHub  ${DIM}(bereits angemeldet)${R}"; _OPEN_GH=0
     elif ask_yn "Jetzt bei GitHub anmelden (gh auth login)?"; then
-      gh auth login || warn "gh-Login abgebrochen/fehlgeschlagen."
-      if gh auth status >/dev/null 2>&1; then
-        step "Private Repos jetzt klonen (mit Auth) — kann bei großen Repos dauern…"
-        bash "$REPO_DIR/scripts/clone-repos.sh" || warn "Repo-Klone teils fehlgeschlagen."
-      fi
+      if gh auth login; then
+        _SGH_V="✔ GitHub (angemeldet)"; _SGH_C="${GREEN}✔${R} GitHub  ${DIM}(angemeldet)${R}"; _OPEN_GH=0
+        if gh auth status >/dev/null 2>&1; then
+          step "Private Repos klonen (mit Auth)…"
+          bash "$REPO_DIR/scripts/clone-repos.sh" || warn "Repo-Klone teils fehlgeschlagen."
+        fi
+      else warn "gh-Login fehlgeschlagen."; fi
     fi
   fi
   if command -v tailscale >/dev/null 2>&1; then
-    ask_yn "Tailscale jetzt verbinden (sudo tailscale up)?" && { sudo tailscale up || warn "tailscale up abgebrochen/fehlgeschlagen."; }
-  fi
-  # Motion-Key nur anbieten, wenn pass schon initialisiert ist (braucht GPG-Key).
+    if ask_yn "Tailscale jetzt verbinden (sudo tailscale up)?"; then
+      if sudo tailscale up; then
+        _STS_V="✔ Tailscale (verbunden)"; _STS_C="${GREEN}✔${R} Tailscale  ${DIM}(verbunden)${R}"; _OPEN_TS=0
+      else warn "tailscale up fehlgeschlagen."; fi
+    fi
+  else _OPEN_TS=0; _STS_V="· Tailscale (n/a)"; _STS_C="${DIM}· Tailscale (nicht installiert)${R}"; fi
   if command -v pass >/dev/null 2>&1 && [ -d "${PASSWORD_STORE_DIR:-$HOME/.password-store}" ]; then
     if pass ls motion/api-key >/dev/null 2>&1; then ok "Motion-API-Key bereits in pass"
     elif ask_yn "Motion-API-Key jetzt in pass hinterlegen (für \`morgen\`)?"; then
@@ -376,21 +412,67 @@ if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ]; then
   fi
 fi
 
-# ---- Abschluss ----
+# ---- Abschluss: Job-Logs archivieren ----
 { echo "== JOB-LOGS =="; for l in "$LOGD"/*.log; do echo "--- $l ---"; cat "$l" 2>/dev/null; done; } >> "$LOG" 2>/dev/null || true
 S=$(( $(date +%s) - START ))
-printf '\n%s\n' "${GREEN}   ▟████████████████████████████████████████████▙${R}"
-printf '%s\n'   "${GREEN}   █${CYAN}   S Y S T E M   O N L I N E   ·   ${S}s          ${GREEN}█${R}"
-printf '%s\n'   "${GREEN}   ▜████████████████████████████████████████████▛${R}"
-printf '%s\n' "  ${CYAN}Voll-Log:${R} $LOG"
-[ -s "$LOGD/install.fail" ] && printf '%s\n' "  ${YELLOW}Übersprungene Pakete später einzeln: brew install <name>${R}"
-cat <<'NEXT'
 
-  Restschritte, die ZWINGEND ein Mensch machen muss (Logins/Secrets/GUI):
-   • Apple-ID/iCloud · Citrix-Store · claude starten + Abo-Login
-   • GPG-Key importieren (gpg --import) -> danach: pass init & Motion-Key
-   • gh auth login / tailscale up: falls oben übersprungen
-   • Chrome-Extensions: ./scripts/chrome-extensions.sh
-   • FileVault aktivieren (Systemeinstellungen — bewusst manuell)
-   • nvim: :checkhealth (Plugins sind vorgebaut) · p10k ist vorkonfiguriert
-NEXT
+# ---- Summary-Box (79 Zeichen breit) ----
+# _bl "sichtbarer Text" "gefärbter Text"
+# Breite: ║(1) + ··(2) + Inhalt(73) + ··(2) + ║(1) = 79
+_bl() {
+  local vis="$1" col="${2:-$1}" vlen pad
+  vlen=$(printf '%s' "$vis" | wc -m | tr -d ' ')
+  pad=$(( 73 - vlen )); [ "$pad" -lt 0 ] && pad=0
+  printf '%s  %s%*s  %s\n' "${DIM}║${R}" "$col" "$pad" "" "${DIM}║${R}"
+}
+_bsep() { printf '%s\n' "${DIM}╠═══════════════════════════════════════════════════════════════════════════╣${R}"; }
+_bemp() { _bl ""; }
+
+# Titelzeile (Breite ohne ANSI exakt berechnen)
+_TTXT="  S Y S T E M   O N L I N E  ·  ${BRAND}  ·  ${S}s"
+_TPAD=$(( 73 - ${#_TTXT} )); [ "$_TPAD" -lt 0 ] && _TPAD=0
+
+printf '\n'
+printf '%s\n' "${PINK}╔═══════════════════════════════════════════════════════════════════════════╗${R}"
+printf '%s  %s  ·  %s  ·  %s%*s  %s\n' \
+  "${PINK}║${R}" \
+  "${CYAN}S Y S T E M   O N L I N E${R}" \
+  "${GREEN}${BRAND}${R}" \
+  "${YELLOW}${S}s${R}" \
+  "$_TPAD" "" \
+  "${PINK}║${R}"
+_bsep
+_bemp
+_bl "  E R L E D I G T" "  ${PURPLE}E R L E D I G T${R}"
+_bemp
+_bl "  ${_SPKG_V}" "  ${_SPKG_C}"
+_bl "  ${_SOMZ_V}" "  ${_SOMZ_C}"
+_bl "  ${_SREP_V}" "  ${_SREP_C}"
+_bl "  ${_SMAC_V}" "  ${_SMAC_C}"
+_bl "  ${_SCHE_V}" "  ${_SCHE_C}"
+_bl "  ${_SCLA_V}" "  ${_SCLA_C}"
+_bl "  ${_SGH_V}"  "  ${_SGH_C}"
+_bl "  ${_STS_V}"  "  ${_STS_C}"
+_bemp
+_bsep
+_bemp
+_bl "  N O C H   O F F E N" "  ${BLUE}N O C H   O F F E N${R}"
+_bemp
+_bl "  ▸  Apple-ID · iCloud · Citrix-Store · claude Abo-Login" \
+    "  ${BLUE}▸${R}  Apple-ID ${DIM}·${R} iCloud ${DIM}·${R} Citrix-Store ${DIM}·${R} claude Abo-Login"
+_bl "  ▸  GPG-Key importieren  →  pass init  →  Motion-API-Key" \
+    "  ${BLUE}▸${R}  GPG-Key importieren  ${DIM}→${R}  pass init  ${DIM}→${R}  Motion-API-Key"
+[ "$_OPEN_GH" = 1 ] && \
+  _bl "  ▸  gh auth login" "  ${BLUE}▸${R}  ${CYAN}gh auth login${R}"
+[ "$_OPEN_TS" = 1 ] && \
+  _bl "  ▸  sudo tailscale up" "  ${BLUE}▸${R}  ${CYAN}sudo tailscale up${R}"
+_bl "  ▸  FileVault aktivieren  (Systemeinstellungen)" \
+    "  ${BLUE}▸${R}  FileVault aktivieren  ${DIM}(Systemeinstellungen)${R}"
+_bl "  ▸  Chrome-Extensions:  ./scripts/chrome-extensions.sh" \
+    "  ${BLUE}▸${R}  Chrome-Extensions:  ${DIM}./scripts/chrome-extensions.sh${R}"
+_bl "  ▸  nvim :checkhealth  (Plugins vorgebaut)  ·  p10k vorkonfiguriert" \
+    "  ${BLUE}▸${R}  nvim :checkhealth  ${DIM}(Plugins vorgebaut)${R}  ${DIM}·${R}  p10k vorkonfiguriert"
+_bemp
+printf '%s\n' "${PINK}╚═══════════════════════════════════════════════════════════════════════════╝${R}"
+printf '  %s %s\n' "${DIM}Log:${R}" "$LOG"
+[ -s "$LOGD/install.fail" ] && printf '  %s\n' "${YELLOW}Übersprungene Pakete nachinstallieren: brew install <name>${R}"
