@@ -38,6 +38,7 @@ fi
 command -v bat     >/dev/null && alias cat='bat --paging=never'
 command -v lazygit >/dev/null && alias lg='lazygit'
 command -v nvim    >/dev/null && alias v='nvim' vi='nvim'
+command -v yt      >/dev/null && alias yewtube='yt'   # yewtube installiert den Befehl `yt`
 alias zshconfig='nvim ~/.config/nvim'   # via chezmoi-Quelle bearbeiten: `chezmoi edit`
 
 # yazi: Dateimanager, wechselt beim Verlassen ins gewählte Verzeichnis

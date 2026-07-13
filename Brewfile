@@ -26,7 +26,8 @@ brew "sd"                         # sed (einfach)
 brew "hyperfine"                  # benchmarking
 brew "btop"                       # top
 brew "mole"                       # Mac aufräumen/optimieren (Deep-Clean-CLI, mole.fit)
-brew "tldr"                       # man (Beispiele)
+brew "tealdeer"                   # man-Beispiele (schneller Rust-tldr; Befehl bleibt `tldr`).
+                                  #   Ersetzt die alte Node-Formel "tldr" (bei Homebrew disabled/unmaintained).
 brew "lazygit"                    # git TUI
 brew "yazi"                       # Datei-Manager (ersetzt ranger, Bildvorschau)
 brew "glow"                       # Markdown im Terminal
@@ -56,7 +57,8 @@ brew "terminal-notifier"          # CC-Benachrichtigung bei Fertigstellung
 # --- Terminal-Musik/Radio (die jeweils beste Wahl) ---
 brew "spotify_player"             # Spotify-TUI (Streaming via librespot, Suche, Playlists, Lyrics, Cover)
                                   #   -> braucht Spotify PREMIUM. Leichtere Alternative: ncspot.
-brew "yewtube"                    # YouTube im Terminal (Suche/Play/Download, Audio-only) — nutzt mpv + yt-dlp
+brew "yewtube"                    # YouTube im Terminal — Befehl heißt `yt` (Erbe von mps-youtube!),
+                                  #   nicht `yewtube`. .zshrc legt Alias yewtube=yt an. Nutzt mpv + yt-dlp.
 brew "pipx"                       # isolierte Python-CLI-Installs -> pyradio (Web-Radio) via run_once_50
 
 # --- Freizeit / Terminal-Spaß ---
