@@ -53,6 +53,12 @@ brew "mpv"
 brew "yt-dlp"
 brew "terminal-notifier"          # CC-Benachrichtigung bei Fertigstellung
 
+# --- Terminal-Musik/Radio (die jeweils beste Wahl) ---
+brew "spotify_player"             # Spotify-TUI (Streaming via librespot, Suche, Playlists, Lyrics, Cover)
+                                  #   -> braucht Spotify PREMIUM. Leichtere Alternative: ncspot.
+brew "yewtube"                    # YouTube im Terminal (Suche/Play/Download, Audio-only) — nutzt mpv + yt-dlp
+brew "pipx"                       # isolierte Python-CLI-Installs -> pyradio (Web-Radio) via run_once_50
+
 # --- Freizeit / Terminal-Spaß ---
 brew "tintin"                     # MUD-Client (klassisch, Binary: tt++)
 # blightmud (moderner Rust-MUD) NICHT hier: liegt in einem fremden Tap, den
@@ -78,7 +84,9 @@ cask "citrix-workspace"           # ARTE-Umgebung
 cask "google-chrome"              # Browser (Extensions) + Office 365 im Web/PWA
 cask "microsoft-teams"            # Haupt-Kommunikation (Calls/Chat) — nativ = beste Call-Qualität
 cask "rectangle"                  # Fenster per Tastenkürzel (keyboard-first)
-cask "claude"                     # Claude Desktop-App (parallel zu Claude Code im Terminal)
+cask "claude"                     # Claude Desktop-App (GUI)
+cask "claude-code"                # Claude Code CLI -> `claude` im Terminal (nach $HOMEBREW_PREFIX/bin,
+                                  #   robust auf PATH; ersetzt den fragilen mise/npm-Weg)
 # Office 365 + Outlook Web: keine Installation -> office.com / outlook.office.com
 #   im Chrome als PWA installierbar (empfohlen für die ARTE-Mail)
 # cask "microsoft-outlook"        # Outlook NATIV — nur wenn dir Web bei viel Mail zu wenig ist

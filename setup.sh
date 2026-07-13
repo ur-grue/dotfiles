@@ -449,13 +449,16 @@ if command -v mise >/dev/null 2>&1; then
   fi
 else warn "mise nicht gefunden — brew install mise, dann mise install"; fi
 
-# ---- 7. Claude Code ----
-step "Claude Code (npm via mise)…"
-if mise exec -- npm install -g @anthropic-ai/claude-code >>"$LOG" 2>&1; then
-  ok "Claude Code"
-  _SCLA_V="✔ Claude Code";                _SCLA_C="${GREEN}✔${R} Claude Code"
-else warn "Claude Code separat installieren: docs.claude.com/claude-code";
-  _SCLA_V="▲ Claude Code — manuell";      _SCLA_C="${YELLOW}▲${R} Claude Code  ${DIM}(manuell nachinstallieren)${R}"; fi
+# ---- 7. Claude Code CLI ----
+# Kommt jetzt via `cask "claude-code"` (Paket-Phase) -> legt `claude` nach
+# $HOMEBREW_PREFIX/bin (robust auf PATH). Der alte mise/npm-Weg landete im
+# mise-node-bin und war nur bei aktivem mise auffindbar -> `claude` fehlte im PATH.
+step "Claude Code CLI prüfen…"
+if command -v claude >/dev/null 2>&1; then
+  ok "Claude Code CLI ($(command -v claude))"
+  _SCLA_V="✔ Claude Code (CLI)";           _SCLA_C="${GREEN}✔${R} Claude Code  ${DIM}(CLI)${R}"
+else warn "claude nicht im PATH — brew install --cask claude-code";
+  _SCLA_V="▲ Claude Code — brew install --cask claude-code"; _SCLA_C="${YELLOW}▲${R} Claude Code  ${DIM}(brew install --cask claude-code)${R}"; fi
 
 # ---- 8. Interaktive Anmeldungen ----
 # Überspringen komplett: SETUP_NO_LOGIN=1 ./setup.sh
