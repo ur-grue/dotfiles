@@ -74,6 +74,9 @@ brew "aria2"                      # ani-cli-Downloads
 # --- Dotfile-Manager ---
 brew "chezmoi"
 
+# --- Claude-Code-Ökosystem ---
+brew "bun"                        # JS-Runtime — Voraussetzung für gstack (run_once_60)
+
 # --- Fonts ---
 cask "font-fira-code-nerd-font"
 
