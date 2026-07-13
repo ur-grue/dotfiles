@@ -90,8 +90,9 @@ cask "beeper"                     # elegante Sammellösung: WhatsApp+Telegram+Si
 # Alternative statt Beeper — offizielle Einzel-Apps:
 # cask "whatsapp"
 # cask "telegram"
-# Motion: als Chrome-PWA (app.usemotion.com -> "Installieren") — passt zu "Office im Browser".
-# cask "motion"                   # native App optional; Cask vor Nutzung verifizieren
+cask "motion"                     # Motion — Kalender/To-do/Projekt (usemotion.com), native App
+                                  #   verifiziert: homebrew/cask "motion" -> Motion.app (github.com/usemotion)
+                                  #   API-Key für `morgen`-Briefing: pass insert motion/api-key
 
 # --- Optional: Abgleich & Fern-Zugang (bei Bedarf einkommentieren) ---
 # brew "syncthing"                # cloudloser Echtzeit-Abgleich (zk/Notizen) via Tailscale
