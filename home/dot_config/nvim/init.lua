@@ -3,6 +3,12 @@
 vim.g.mapleader = " "
 vim.g.maplocalleader = "\\"
 
+-- Ungenutzte Remote-Provider aus (Config ist rein Lua) -> saubere :checkhealth + schnellerer Start
+vim.g.loaded_node_provider = 0
+vim.g.loaded_perl_provider = 0
+vim.g.loaded_python3_provider = 0
+vim.g.loaded_ruby_provider = 0
+
 -- lazy.nvim bootstrappen
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
@@ -25,6 +31,7 @@ require("lazy").setup({
   spec = { { import = "plugins" } },
   install = { colorscheme = { "rose-pine" } },
   checker = { enabled = false },
+  rocks = { enabled = false },   -- kein luarocks/hererocks nötig -> :checkhealth-Fehler weg
   ui = { border = "rounded", backdrop = 100 },
   performance = {
     rtp = {

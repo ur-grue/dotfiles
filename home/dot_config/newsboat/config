@@ -10,6 +10,34 @@ text-width 90
 scrolloff 3
 confirm-exit no
 
+# ── Nach Topic sortieren/anzeigen ──────────────────────────────────────────
+# feed-sort-order firsttag: gruppiert die Feed-Liste nach dem ERSTEN Tag ->
+# Feeds desselben Themas stehen zusammen. Tags stehen in der urls-Datei;
+# mit  t  nach Tag filtern,  Strg-t  Filter aufheben.
+feed-sort-order firsttag
+feedlist-format    "%4i %n %11u  %t"
+articlelist-format "%4i %f  %D   %t"
+datetime-format    "%d.%m. %H:%M"
+
+# ── Rosé Pine ──────────────────────────────────────────────────────────────
+# Hintergründe = default -> erben Ghosttys rose-pine-Hintergrund (fügt sich ein,
+# statt mit Terminal-Standard zu kollidieren). Vordergründe = rose-pine-Palette
+# als 256-Farben: text=189, rose/gold-hell=223, iris=183, foam=116, gold=222,
+# muted=60.
+color background          default   default
+color listnormal          color189  default
+color listnormal_unread   color223  default   bold
+color listfocus           color189  color60
+color listfocus_unread    color223  color60   bold
+color info                color116  color236  bold
+color article             color189  default
+color title               color183  default   bold
+color hint-key            color222  default   bold
+color hint-keys-delimiter color60   default
+color hint-separator      color60   default
+color hint-description    color189  default
+color end-of-text-marker  color60   default
+
 # macOS: Standard = echter Browser
 browser "open %u"
 
