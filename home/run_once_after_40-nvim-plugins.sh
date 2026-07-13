@@ -10,3 +10,15 @@ echo "▸ nvim: Plugins vorbauen (lazy.nvim)…"
 # lazy.nvim-Bootstrap-Clone scheitert) bekommt sofort EOF statt ewig zu hängen.
 nvim --headless "+Lazy! sync" +qa </dev/null >/dev/null 2>&1 || \
   echo "  (nvim-Plugins nicht komplett — später einmal 'nvim' öffnen + :Lazy sync)"
+
+# Treesitter-Parser SYNCHRON vorbauen. nvim-treesitter (main branch) installiert
+# sonst asynchron, und headless quittet vorher -> Parser fehlen bis zum manuellen
+# :TSUpdate (genau das im :checkhealth gesehene "missing"). tree-sitter-CLI kommt
+# aus dem Brewfile. Alles in pcall/|| -> nie fatal.
+if command -v tree-sitter >/dev/null 2>&1; then
+  echo "▸ nvim: Treesitter-Parser vorbauen…"
+  nvim --headless -c "lua pcall(function() local ts=require('nvim-treesitter'); local h=ts.install({'bash','regex','json','yaml','toml','python','javascript','typescript','html','css','diff','gitcommit','lua','vim','vimdoc','query','markdown','markdown_inline'}); if type(h)=='table' then if h.wait then h:wait(600000) elseif h.await then h:await() end end end)" -c "qa" </dev/null >/dev/null 2>&1 \
+    || echo "  (Treesitter: Parser installieren sich sonst beim ersten Öffnen der Dateitypen)"
+else
+  echo "  (tree-sitter CLI fehlt -> brew install tree-sitter; Parser bauen beim ersten Öffnen)"
+fi

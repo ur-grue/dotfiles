@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # ============================================================================
 #  AUTOPUNK // BOOTSTRAP — frischer macOS-Dev-Setup.
-#      ./setup.sh            # voller Lauf (Cyberpunk-Dashboard, wenn TTY)
+#      ./setup.sh            # voller Lauf (Dashboard, wenn TTY)
 #      ./setup.sh --check    # Trockenlauf: zeigt, was fehlt (0 Änderungen)
 #      ./setup.sh --plain    # ohne Animationen (Pipes/CI/Debug)
+#      ./setup.sh --no-color # ohne Farben (auch via NO_COLOR-Env / TERM=dumb)
+#      ./setup.sh --no-input # ohne interaktive Prompts (CI/automatisiert)
 #
 #  ROBUSTHEIT: Pakete werden EINZELN installiert. Schlägt eines fehl, wird es
 #  geloggt und ÜBERSPRUNGEN — der Rest läuft weiter. Am Ende: Liste der
@@ -12,11 +14,13 @@
 set -euo pipefail
 
 # ---- Argumente ----
-MODE=run; PLAIN=0
+MODE=run; PLAIN=0; NOCOLOR=0; NOINPUT=0
 for a in "${@:-}"; do case "$a" in
   --check|--dry-run) MODE=check ;;
   --plain)           PLAIN=1 ;;
-  --help|-h) sed -n '2,12p' "$0"; exit 0 ;;
+  --no-color)        NOCOLOR=1 ;;
+  --no-input)        NOINPUT=1 ;;
+  --help|-h) sed -n '2,14p' "$0"; exit 0 ;;
 esac; done
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,21 +33,24 @@ START=$(date +%s)
 BRAND="${BRAND:-ur-grue net inst}"     # Banner-Titel (überschreibbar per Env)
 
 # ---- Farben / TTY / Dashboard-Erkennung ----
-# Fallout-Amber-Theme: warmes Bernstein-Terminal (Vault-Tec-Vibe). Die Namen
-# (PINK/CYAN/GREEN/…) bleiben, damit das restliche Skript automatisch recolored.
+# 16-ANSI-Palette (4-bit) STATT fester 256-Farben: die Ausgabe übernimmt damit
+# automatisch das Terminal-Theme (z.B. rose-pine) und ist voll themebar +
+# barrierefrei (CLI-UX-Best-Practice: no-color.org, GitHub-CLI-Accessibility).
+# Die Namen (PINK/CYAN/…) bleiben semantisch — der Rest des Skripts bleibt gleich.
+# Farbe AUS bei: kein TTY · NO_COLOR gesetzt · TERM=dumb · --no-color.
 COLOR=0; TUI=0
-if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then COLOR=1; fi
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ] && [ "$NOCOLOR" = 0 ]; then COLOR=1; fi
 if [ "$COLOR" = 1 ] && [ "$PLAIN" = 0 ]; then TUI=1; fi
 if [ "$COLOR" = 1 ]; then
   R=$'\033[0m'
-  PINK=$'\033[38;5;208m'    # Orange  — Struktur, Rahmen, Brand
-  CYAN=$'\033[38;5;214m'    # Amber   — Header, Labels
-  GREEN=$'\033[38;5;220m'   # Gold    — OK, Balken-Fill
-  YELLOW=$'\033[38;5;172m'  # Dunkelamber — Warnung, Spinner
-  PURPLE=$'\033[38;5;135m'  # Violett   — Summary-Header
-  BLUE=$'\033[38;5;75m'     # Teal/Cyan — Offen-Marker
-  DIM=$'\033[38;5;94m'      # Braun-Amber — Log, inaktiv, Rahmen-matt
-  RED=$'\033[38;5;196m'     # Rot     — Fehler (bewusst Signalfarbe)
+  RED=$'\033[31m'     # Fehler             (rose-pine: love)
+  GREEN=$'\033[32m'   # OK, Balken-Fill    (pine/foam)
+  YELLOW=$'\033[33m'  # Warnung, Spinner   (gold)
+  BLUE=$'\033[34m'    # Info, Offen-Marker (foam/pine)
+  PURPLE=$'\033[35m'  # Summary-Header     (iris)
+  CYAN=$'\033[36m'    # Header, Labels     (foam)
+  PINK=$'\033[95m'    # Brand, Rahmen      (heller iris)
+  DIM=$'\033[90m'     # Log, matt, inaktiv (grau)
 else R=''; PINK=''; CYAN=''; GREEN=''; YELLOW=''; PURPLE=''; BLUE=''; DIM=''; RED=''; fi
 FR=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏); NF=${#FR[@]}; _fri=0; _first=1
 
@@ -169,7 +176,7 @@ fi
 # HIER, vor dem ersten sudo, mit geleertem Eingabepuffer. chezmoi bekommt die Werte
 # in Step 6 via --promptString. Nur beim ERSTEN Lauf fragen (danach kennt chezmoi sie).
 _GIT_NAME=""; _GIT_EMAIL=""
-if [ -t 0 ] && [ -t 1 ] && [ ! -f "$HOME/.config/chezmoi/chezmoi.toml" ]; then
+if [ -t 0 ] && [ -t 1 ] && [ "$NOINPUT" = 0 ] && [ ! -f "$HOME/.config/chezmoi/chezmoi.toml" ]; then
   step "Git-Identität (einmalig, landet in ~/.gitconfig)"
   _flush_stdin
   printf '%s' "  ${CYAN}Voller Name (für git): ${R}"; read -r _GIT_NAME  </dev/tty 2>/dev/null || _GIT_NAME=""
@@ -478,7 +485,7 @@ else warn "claude nicht im PATH — brew install --cask claude-code";
 _SGH_V="· GitHub (übersprungen)"; _SGH_C="${DIM}· GitHub (übersprungen)${R}"; _OPEN_GH=1
 _STS_V="· Tailscale (übersprungen)"; _STS_C="${DIM}· Tailscale (übersprungen)${R}"; _OPEN_TS=1
 
-if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ]; then
+if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ] && [ "$NOINPUT" = 0 ]; then
   step "Anmeldungen (optional — jetzt erledigen erspart die Nachher-Checkliste)"
   if command -v gh >/dev/null 2>&1; then
     if gh auth status >/dev/null 2>&1; then

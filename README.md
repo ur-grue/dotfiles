@@ -23,12 +23,13 @@ Danach: **manuelle Restschritte** in [`docs/cheatsheet.md`](docs/cheatsheet.md) 
 | Terminal     | Ghostty (Rosé Pine, Hell/Dunkel folgt macOS) |
 | Multiplexer  | tmux (+ resurrect/continuum, vim-tmux-navigator) |
 | Editor       | Neovim (lazy.nvim, Rosé Pine, Claude Code integriert) |
-| KI-Coding    | Claude Code in tmux-Pane + `claudecode.nvim` (Inline-Diffs) |
+| KI-Coding    | Claude Code CLI (`claude`) + `claudecode.nvim` · gstack-Skills · globale `~/.claude/CLAUDE.md` |
 | Shell        | zsh + oh-my-zsh + Powerlevel10k |
 | CLI          | eza, bat, ripgrep, fd, zoxide, fzf, atuin, delta, lazygit, yazi … |
 | Runtimes     | mise (node, python, ruby) |
 | Notizen      | zk (Zettelkasten), jrnl |
-| Lesen        | newsboat (Wissenschaft + KI), w3m |
+| Lesen        | newsboat (rose-pine, nach Topic gruppiert), w3m |
+| Medien       | Spotify (`spotify_player`), YouTube (`yt`/yewtube), Web-Radio (`pyradio`), mpv |
 
 ## Täglicher chezmoi-Workflow (einfach)
 
