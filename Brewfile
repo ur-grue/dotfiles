@@ -82,7 +82,7 @@ cask "font-fira-code-nerd-font"
 
 # --- Apps ---
 cask "ghostty"                    # Terminal
-cask "tailscale"                  # Mesh-Netz zu iMac/Homelab
+cask "tailscale-app"              # Mesh-Netz zu iMac/Homelab (GUI + CLI; hieß früher "tailscale")
 cask "citrix-workspace"           # ARTE-Umgebung
 cask "google-chrome"              # Browser (Extensions) + Office 365 im Web/PWA
 cask "microsoft-teams"            # Haupt-Kommunikation (Calls/Chat) — nativ = beste Call-Qualität
