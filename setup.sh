@@ -419,10 +419,23 @@ printf '%s\n' "  ${DIM}(baut still Runtimes & nvim-Plugins vor — kann ein paar
 CZ_ARGS=(--promptDefaults)
 [ -n "$_GIT_NAME" ]  && CZ_ARGS+=(--promptString "name=$_GIT_NAME")
 [ -n "$_GIT_EMAIL" ] && CZ_ARGS+=(--promptString "email=$_GIT_EMAIL")
-if chezmoi init --apply --source "$REPO_DIR" "${CZ_ARGS[@]}" >>"$LOG" 2>&1; then
+_cz() { chezmoi init --apply --source "$REPO_DIR" "${CZ_ARGS[@]}" >>"$LOG" 2>&1; }
+# Selbstheilung: ein abgebrochener Vorlauf (Strg-C mitten in chezmoi) hinterlässt
+# einen State-Lock -> jeder Folgelauf stürbe mit "timeout obtaining persistent
+# state lock". Robust: bei genau diesem Fehler UND keinem laufenden chezmoi den
+# verwaisten State entfernen (hält nur run_once-Buchführung; Hooks sind idempotent)
+# und EINMAL erneut versuchen.
+_cz_ok=0
+if _cz; then _cz_ok=1
+elif grep -qi 'state lock' "$LOG" 2>/dev/null && ! pgrep -x chezmoi >/dev/null 2>&1; then
+  warn "chezmoi-State-Lock verwaist (kein chezmoi läuft) — entferne & wiederhole…"
+  rm -f "$HOME/.config/chezmoi/chezmoistate.boltdb" "$HOME/.local/state/chezmoi/chezmoistate.boltdb" 2>/dev/null || true
+  _cz && _cz_ok=1
+fi
+if [ "$_cz_ok" = 1 ]; then
   ok "Dotfiles (chezmoi)"
   _SCHE_V="✔ Dotfiles (chezmoi)";         _SCHE_C="${GREEN}✔${R} Dotfiles  ${DIM}(chezmoi)${R}"
-else warn "chezmoi — Fehler (Details: $LOG).";
+else warn "chezmoi — Fehler. Läuft evtl. noch ein chezmoi? sonst: rm ~/.config/chezmoi/chezmoistate.boltdb (Details: $LOG)";
   _SCHE_V="▲ Dotfiles (chezmoi — Fehler)"; _SCHE_C="${YELLOW}▲${R} Dotfiles  ${DIM}(chezmoi — Fehler)${R}"; fi
 # git-Identität kann leer sein, wenn oben nur Enter gedrückt wurde -> ehrlich melden.
 _OPEN_GITID=0
