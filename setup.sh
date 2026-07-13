@@ -57,6 +57,15 @@ die()  { printf '%s\n' "  ${RED}✖ $*${R}"; logline "DIE $*"; exit 1; }
 # Default NEIN. Gibt 0 nur bei ausdrücklichem y/j zurück.
 ask_yn() { local q="${1:-?}" a=; printf '%s' "  ${CYAN}${q} [y/N] ${R}"
   read -r a </dev/tty 2>/dev/null || return 1; case "$a" in [yYjJ]*) return 0;; *) return 1;; esac; }
+# Verwirft gepufferte Type-ahead-Eingaben von /dev/tty. SICHERHEIT: verhindert, dass
+# ein direkt zuvor getipptes Passwort (z.B. für sudo) in ein folgendes `read` gerät.
+_flush_stdin() {
+  [ -t 0 ] || return 0
+  local _s; _s="$(stty -g </dev/tty 2>/dev/null)" || return 0
+  stty -icanon min 0 time 0 </dev/tty 2>/dev/null || { stty "$_s" </dev/tty 2>/dev/null || true; return 0; }
+  while read -r _ </dev/tty 2>/dev/null; do :; done
+  stty "$_s" </dev/tty 2>/dev/null || true; return 0
+}
 
 # ---- Traps ----
 # cleanup läuft bei JEDEM Exit: Cursor sichtbar, Hintergrund-Helfer killen und das
@@ -143,6 +152,7 @@ fi
 # ---- Umgebung ----
 export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_NO_ENV_HINTS=1
 export GIT_TERMINAL_PROMPT=0
+export MISE_YES=1          # mise beantwortet Trust-/Bestätigungs-Prompts selbst -> kein stiller Hänger im chezmoi-Lauf
 caffeinate -dimsu & CAFF_PID=$!
 
 # ---- 1. Xcode CLT (Gate) ----
@@ -150,6 +160,20 @@ if ! xcode-select -p >/dev/null 2>&1; then
   step "Xcode Command Line Tools installieren…"
   xcode-select --install 2>/dev/null || true
   warn "CLT-Installation abschließen, dann ./setup.sh erneut ausführen."; exit 0
+fi
+
+# ---- 1b. Git-Identität — MUSS VOR JEDER PASSWORT-EINGABE STEHEN ----
+# SICHERHEIT: Früher stand dieser Prompt in Step 6, direkt nach `sudo -v`. Type-ahead
+# rund um die Passworteingabe konnte so ein Passwort in `read` schieben, das dann via
+# chezmoi dauerhaft als git user.name in ~/.gitconfig landete (Klartext-Leak). Jetzt
+# HIER, vor dem ersten sudo, mit geleertem Eingabepuffer. chezmoi bekommt die Werte
+# in Step 6 via --promptString. Nur beim ERSTEN Lauf fragen (danach kennt chezmoi sie).
+_GIT_NAME=""; _GIT_EMAIL=""
+if [ -t 0 ] && [ -t 1 ] && [ ! -f "$HOME/.config/chezmoi/chezmoi.toml" ]; then
+  step "Git-Identität (einmalig, landet in ~/.gitconfig)"
+  _flush_stdin
+  printf '%s' "  ${CYAN}Voller Name (für git): ${R}"; read -r _GIT_NAME  </dev/tty 2>/dev/null || _GIT_NAME=""
+  printf '%s' "  ${CYAN}E-Mail (für git): ${R}";      read -r _GIT_EMAIL </dev/tty 2>/dev/null || _GIT_EMAIL=""
 fi
 
 # ---- 2. sudo cachen + still am Leben halten ----
@@ -385,26 +409,16 @@ else warn "macOS-Defaults — Fehler (Log: $LOGD/macos.log)";
   _SMAC_V="▲ macOS-Defaults — Fehler";    _SMAC_C="${YELLOW}▲${R} macOS-Defaults  ${DIM}(Fehler)${R}"; fi
 
 # ---- 6. Dotfiles (chezmoi) ----
-# KRITISCH: .chezmoi.toml.tmpl fragt beim ERSTEN Lauf name+email (für git) via
-# promptStringOnce ab. Da chezmoi hier nach `>>LOG 2>&1` läuft, wäre dieser Prompt
-# UNSICHTBAR im Log — der Lauf schiene bei „Dotfiles anwenden…" einzufrieren, bis
-# man blind Name/E-Mail tippt. Daher: Werte HIER sichtbar abfragen und per
-# --promptString durchreichen. --promptDefaults ist IMMER dabei -> chezmoi promptet
-# nie (kein Hang), und das Array ist nie leer (kein bash-3.2 `set -u`-Crash).
+# .chezmoi.toml.tmpl fragt beim ERSTEN Lauf name+email via promptStringOnce ab; da
+# chezmoi hier nach `>>LOG 2>&1` läuft, wäre der Prompt unsichtbar (Schein-Hang).
+# Deshalb wurden name/email schon in Schritt 1b (VOR jeder Passwort-Eingabe) sicher
+# abgefragt und werden nun via --promptString durchgereicht. --promptDefaults ist
+# IMMER dabei -> chezmoi promptet nie, und das Array ist nie leer (bash-3.2-safe).
 step "Dotfiles anwenden (chezmoi)…"
 printf '%s\n' "  ${DIM}(baut still Runtimes & nvim-Plugins vor — kann ein paar Minuten dauern)${R}"
 CZ_ARGS=(--promptDefaults)
-if [ -t 0 ] && [ -t 1 ]; then
-  _DEF_NAME="$(git config --global user.name 2>/dev/null || true)"
-  _DEF_EMAIL="$(git config --global user.email 2>/dev/null || true)"
-  printf '%s' "  ${CYAN}Voller Name (für git)${R}${_DEF_NAME:+ ${DIM}[$_DEF_NAME]${R}}: "
-  read -r _IN_NAME  </dev/tty 2>/dev/null || _IN_NAME=""
-  printf '%s' "  ${CYAN}E-Mail (für git)${R}${_DEF_EMAIL:+ ${DIM}[$_DEF_EMAIL]${R}}: "
-  read -r _IN_EMAIL </dev/tty 2>/dev/null || _IN_EMAIL=""
-  _IN_NAME="${_IN_NAME:-$_DEF_NAME}"; _IN_EMAIL="${_IN_EMAIL:-$_DEF_EMAIL}"
-  [ -n "$_IN_NAME" ]  && CZ_ARGS+=(--promptString "name=$_IN_NAME")
-  [ -n "$_IN_EMAIL" ] && CZ_ARGS+=(--promptString "email=$_IN_EMAIL")
-fi
+[ -n "$_GIT_NAME" ]  && CZ_ARGS+=(--promptString "name=$_GIT_NAME")
+[ -n "$_GIT_EMAIL" ] && CZ_ARGS+=(--promptString "email=$_GIT_EMAIL")
 if chezmoi init --apply --source "$REPO_DIR" "${CZ_ARGS[@]}" >>"$LOG" 2>&1; then
   ok "Dotfiles (chezmoi)"
   _SCHE_V="✔ Dotfiles (chezmoi)";         _SCHE_C="${GREEN}✔${R} Dotfiles  ${DIM}(chezmoi)${R}"
