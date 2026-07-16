@@ -7,13 +7,17 @@ mkdir -p "$BACKUP"
 echo "== 1. git-Repos in ~ auf ungepushte/ungesicherte Änderungen prüfen =="
 for d in "$HOME"/*/ ; do
   [ -d "$d/.git" ] || continue
-  cd "$d"
-  dirty="$(git status --porcelain 2>/dev/null)"
-  unpushed="$(git log --branches --not --remotes --oneline 2>/dev/null | head -1)"
-  if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
-    echo "  ⚠  $(basename "$d")  — ungesicherte Änderungen oder ungepushte Commits!"
-  fi
-  cd - >/dev/null
+  # Subshell + `cd || exit`: schlägt das cd fehl, wird NUR dieses Repo
+  # übersprungen (nicht der ganze Scan), und die git-Checks laufen garantiert
+  # IM Repo — nie im Elternverzeichnis (sonst falsches "sauber" direkt vor dem Wipe).
+  (
+    cd "$d" || exit
+    dirty="$(git status --porcelain 2>/dev/null)"
+    unpushed="$(git log --branches --not --remotes --oneline 2>/dev/null | head -1)"
+    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
+      echo "  ⚠  $(basename "$d")  — ungesicherte Änderungen oder ungepushte Commits!"
+    fi
+  )
 done
 echo
 echo "== 2. Daten (keine Config) sichern nach $BACKUP =="
