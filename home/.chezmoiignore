@@ -1,3 +1,17 @@
+{{- if .existing }}
+{{- /* --existing (Bestehendes System / iMac): maschinen-eigene bzw. daten-
+       tragende Configs NICHT überschreiben. `.existing` kommt PERSISTENT aus der
+       chezmoi-Config (.chezmoi.toml.tmpl) — nicht aus einer flüchtigen Env-Var —
+       damit auch spätere gewöhnliche `chezmoi apply`-Läufe diese Ignores beachten.
+       Die ~/.gitconfig bleibt unberührt (die geteilte git-Config kommt via
+       ~/.config/git/config); mise-Runtime-Pins, jrnl-Journal-Index und newsboat-
+       Feeds bleiben lokal, damit nichts aussieht wie Datenverlust. Alles andere
+       konvergiert (nach Backup + chezmoi diff + Bestätigung in setup.sh). */ -}}
+.gitconfig
+.config/mise/config.toml
+.config/jrnl/jrnl.yaml
+.config/newsboat/urls
+{{- end }}
 **/.DS_Store
 .config/zsh/secrets.zsh
 .config/nvim/lazy-lock.json

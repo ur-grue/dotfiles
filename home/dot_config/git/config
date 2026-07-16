@@ -1,0 +1,43 @@
+# Geteilte git-Config (IDENTITÄTS-FREI). Git liest diese Datei automatisch als
+# zweite globale Config NEBEN ~/.gitconfig (Reihenfolge: ~/.config/git/config,
+# dann ~/.gitconfig — die letzte gewinnt). Dadurch:
+#   • konvergieren iMac + MacBook auf dieselben Aliase/Tools ("ein System") —
+#     SOFERN die lokale ~/.gitconfig denselben Key nicht selbst setzt (die gewinnt)
+#   • bleibt die maschinen-eigene ~/.gitconfig (Identität, user.signingkey,
+#     commit.gpgsign, includeIf-Arbeits-Identität, credential.helper) UNBERÜHRT
+#   • gewinnt bei Konflikt immer die lokale ~/.gitconfig (wird danach gelesen)
+# Die Identität selbst steht in ~/.gitconfig (dot_gitconfig.tmpl, nur [user]).
+[init]
+    defaultBranch = main
+
+[core]
+    editor = nvim
+    pager  = delta
+
+[interactive]
+    diffFilter = delta --color-only
+
+[delta]
+    navigate = true
+    line-numbers = true
+
+[merge]
+    conflictstyle = zdiff3
+
+[diff]
+    colorMoved = default
+
+[pull]
+    rebase = true
+
+[push]
+    autoSetupRemote = true
+
+[alias]
+    s  = status -sb
+    lg = log --oneline --graph --decorate --all
+    co = checkout
+    br = branch
+    aa = add --all
+    cm = commit -m
+    wt = worktree

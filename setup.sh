@@ -3,6 +3,11 @@
 #  AUTOPUNK // BOOTSTRAP — frischer macOS-Dev-Setup.
 #      ./setup.sh            # voller Lauf (Dashboard, wenn TTY)
 #      ./setup.sh --check    # Trockenlauf: zeigt, was fehlt (0 Änderungen)
+#      ./setup.sh --existing # BESTEHENDES System (iMac, KEIN frischer Mac) —
+#                            #   nicht-destruktiv: Backup + chezmoi diff + Nachfrage
+#                            #   vor dem Überschreiben. ~/.gitconfig, mise-Pins,
+#                            #   jrnl/newsboat bleiben; macOS-Defaults werden NICHT
+#                            #   gesetzt; Casks über bereits vorhandenen Apps: skip.
 #      ./setup.sh --plain    # ohne Animationen (Pipes/CI/Debug)
 #      ./setup.sh --no-color # ohne Farben (auch via NO_COLOR-Env / TERM=dumb)
 #      ./setup.sh --no-input # ohne interaktive Prompts (CI/automatisiert)
@@ -14,13 +19,14 @@
 set -euo pipefail
 
 # ---- Argumente ----
-MODE=run; PLAIN=0; NOCOLOR=0; NOINPUT=0
+MODE=run; PLAIN=0; NOCOLOR=0; NOINPUT=0; EXISTING=0
 for a in "${@:-}"; do case "$a" in
   --check|--dry-run) MODE=check ;;
+  --existing|--production|--merge) EXISTING=1 ;;
   --plain)           PLAIN=1 ;;
   --no-color)        NOCOLOR=1 ;;
   --no-input)        NOINPUT=1 ;;
-  --help|-h) sed -n '2,14p' "$0"; exit 0 ;;
+  --help|-h) sed -n '2,19p' "$0"; exit 0 ;;
 esac; done
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -104,7 +110,7 @@ banner() {
   printf '%s\n' "${PINK}   ▟████████████████████████████████████████████▙${R}"
   printf '%s%*s%s%*s%s\n' "${PINK}   █${CYAN}" "$pl" '' "$title" "$pr" '' "${PINK}█${R}"
   printf '%s\n' "${PINK}   ▜████████████████████████████████████████████▛${R}"
-  printf '%s\n' "${DIM}   night-city dev-env · macOS $(sw_vers -productVersion 2>/dev/null || echo '?') · $(date '+%Y-%m-%d %H:%M')${R}"
+  printf '%s\n' "${DIM}   night-city dev-env · macOS $(sw_vers -productVersion 2>/dev/null || echo '?') · $(date '+%Y-%m-%d %H:%M')$([ "${EXISTING:-0}" = 1 ] && printf ' · %s' 'BESTEHENDES SYSTEM')${R}"
 }
 banner
 
@@ -116,10 +122,28 @@ printf '%s\n' "  ${DIM}macOS $(sw_vers -productVersion 2>/dev/null) · $ARCH · 
 FREE_GB="$(df -g / 2>/dev/null | awk 'NR==2{print $4}')"
 { [ "${FREE_GB:-0}" -ge 15 ]; } 2>/dev/null || warn "Nur ${FREE_GB:-?}G frei — Casks brauchen Platz (>=15G empfohlen)."
 curl -fsI --max-time 8 https://formulae.brew.sh >/dev/null 2>&1 || die "Kein Netz (formulae.brew.sh nicht erreichbar)."
-for f in Brewfile repos.txt scripts/clone-repos.sh scripts/macos-defaults.sh; do
+for f in Brewfile repos.txt scripts/clone-repos.sh scripts/macos-defaults.sh home/dot_config/git/config; do
   [ -e "$REPO_DIR/$f" ] || die "Datei fehlt im Repo: $f"
 done
 ok "Preflight ok"
+
+# ---- Modus: bestehendes vs. frisches System ----
+# --existing macht den Lauf nicht-destruktiv (Backup + Diff + Nachfrage). Das Signal
+# geht via DOTFILES_EXISTING an chezmoi (getemplatete .chezmoiignore -> ~/.gitconfig,
+# mise-Pins, jrnl/newsboat bleiben) UND an den nvim-run_once-Hook (Lazy install statt
+# sync -> löscht keine fremden Plugins).
+if [ "$EXISTING" = 1 ]; then
+  export DOTFILES_EXISTING=1
+  step "Modus: BESTEHENDES System — nicht-destruktiv"
+  printf '%s\n' "  ${DIM}Backup vor jedem Überschreiben · chezmoi diff + Nachfrage · macOS-Defaults werden NICHT gesetzt · Casks über vorhandenen Apps: skip${R}"
+else
+  # Auto-Erkennung: sieht die Maschine schon benutzt aus, --existing fehlt aber?
+  # NUR ein Hinweis, niemals erzwingen — der Nutzer kennt seinen Fall besser.
+  if [ -f "$HOME/.config/chezmoi/chezmoi.toml" ] || { [ -e "$HOME/.zshrc" ] && ! grep -q "oh-my-zsh" "$HOME/.zshrc" 2>/dev/null; }; then
+    warn "Sieht nach einem bereits genutzten System aus. Für sicheres, nicht-destruktives Anwenden:"
+    printf '%s\n' "      ${CYAN}./setup.sh --existing${R}  ${DIM}(Backup + Diff + Nachfrage; überschreibt nichts blind)${R}"
+  fi
+fi
 
 # ---- Brewfile parsen (Formeln + Casks) ----
 BREWS=(); CASKS=()
@@ -176,7 +200,7 @@ fi
 # HIER, vor dem ersten sudo, mit geleertem Eingabepuffer. chezmoi bekommt die Werte
 # in Step 6 via --promptString. Nur beim ERSTEN Lauf fragen (danach kennt chezmoi sie).
 _GIT_NAME=""; _GIT_EMAIL=""
-if [ -t 0 ] && [ -t 1 ] && [ "$NOINPUT" = 0 ] && [ ! -f "$HOME/.config/chezmoi/chezmoi.toml" ]; then
+if [ -t 0 ] && [ -t 1 ] && [ "$NOINPUT" = 0 ] && [ "$EXISTING" = 0 ] && [ ! -f "$HOME/.config/chezmoi/chezmoi.toml" ]; then
   step "Git-Identität (einmalig, landet in ~/.gitconfig)"
   _flush_stdin
   printf '%s' "  ${CYAN}Voller Name (für git): ${R}"; read -r _GIT_NAME  </dev/tty 2>/dev/null || _GIT_NAME=""
@@ -215,6 +239,27 @@ setup_omz() {
   [ -d "$C/plugins/zsh-syntax-highlighting" ] || git clone -q --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting "$C/plugins/zsh-syntax-highlighting"
 }
 
+# Prüft, ob die App eines Casks bereits auf der Platte liegt — AUCH wenn sie NICHT
+# von brew installiert wurde (IT/manuell). `brew list --cask` sieht solche nicht;
+# ein pkg-Cask (citrix/teams/tailscale) würde sonst via `sudo installer` blind
+# DRÜBERbügeln und eine laufende Arbeits-App ersetzen. Nur in --existing genutzt.
+cask_app_present() {
+  local c="$1" app
+  # Bekannte pkg-Casks: `brew info` nennt nur den .pkg-Namen, nicht die Ziel-App.
+  case "$c" in
+    citrix-workspace) [ -e "/Applications/Citrix Workspace.app" ] && return 0 ;;
+    microsoft-teams)  [ -e "/Applications/Microsoft Teams.app" ]  && return 0 ;;
+    tailscale-app)    [ -e "/Applications/Tailscale.app" ]        && return 0 ;;
+  esac
+  # Generisch: jede „(App)"-Artifact-Zeile aus `brew info` gegen /Applications testen.
+  while IFS= read -r app; do
+    [ -n "$app" ] && [ -e "/Applications/$app" ] && return 0
+  done <<EOF
+$(brew info --cask "$c" 2>/dev/null | sed -n 's/ (App)$//p' | sed 's/^[[:space:]]*//')
+EOF
+  return 1
+}
+
 # Kernstück: EINZELNE Paketinstallation mit Fehler-Isolation.
 # Gibt EINE saubere Zeile pro Paket auf stdout aus (-> Live-Log-Stream). Der
 # laute brew-Output landet separat in install.log. install.status treibt das
@@ -233,7 +278,11 @@ install_packages() {
   done
   for f in "${CASKS[@]}"; do
     d=$((d+1)); printf '%s %s cask %s\n' "$d" "$TOTAL" "$f" > "$LOGD/install.status"
-    if brew list --cask --versions "$f" >/dev/null 2>&1; then
+    if [ "${EXISTING:-0}" = 1 ] && cask_app_present "$f"; then
+      # Bestehendes System: App liegt schon da (evtl. von IT/manuell) -> NICHT
+      # drüberinstallieren. Schützt Citrix/Teams/Tailscale & Co. vor stillem Reinstall.
+      printf '  OK  [%s/%s] %s  (App bereits vorhanden -> uebersprungen)\n' "$d" "$TOTAL" "$f"
+    elif brew list --cask --versions "$f" >/dev/null 2>&1; then
       printf '  OK  [%s/%s] %s  (vorhanden)\n'   "$d" "$TOTAL" "$f"
     elif [ "${_HAVE_SUDO:-1}" = 0 ] && ! sudo -n -v 2>/dev/null; then
       # Kein sudo verfügbar -> ein pkg-Cask würde unsichtbar auf's Passwort warten.
@@ -362,7 +411,14 @@ rm -f "$LOGD"/*.rc "$LOGD/install.status"; : > "$LOGD/install.log"; : > "$LOGD/s
 # vorzeitig stürbe. Ohne die .rc bliebe der dashboard()-Loop hängen.
 ( set +eu; setup_omz                                  >"$LOGD/omz.log"   2>&1; echo $? >"$LOGD/omz.rc"   ) & P_OMZ=$!
 ( set +eu; bash "$REPO_DIR/scripts/clone-repos.sh"    >"$LOGD/repos.log" 2>&1; echo $? >"$LOGD/repos.rc" ) & P_REPOS=$!
-( set +eu; bash "$REPO_DIR/scripts/macos-defaults.sh" >"$LOGD/macos.log" 2>&1; echo $? >"$LOGD/macos.rc" ) & P_MAC=$!
+# Bestehendes System: macOS-Defaults NICHT anfassen (überschreiben getunte Prefs,
+# kapern Caps Lock). Job-Slot trotzdem sauber „fertig" melden (rc=0), damit das
+# Dashboard nicht auf einen fehlenden Sentinel wartet.
+if [ "$EXISTING" = 1 ]; then
+  ( echo "macOS-Defaults uebersprungen (--existing). Bei Bedarf: ./scripts/macos-defaults.sh" >"$LOGD/macos.log"; echo 0 >"$LOGD/macos.rc" ) & P_MAC=$!
+else
+  ( set +eu; bash "$REPO_DIR/scripts/macos-defaults.sh" >"$LOGD/macos.log" 2>&1; echo $? >"$LOGD/macos.rc" ) & P_MAC=$!
+fi
 if [ "$TUI" = 1 ]; then
   # Fortschrittszeilen -> stream (Live-Log); brew-Rauschen bleibt in install.log.
   # echo $? im äußeren Subshell: Sentinel auch dann geschrieben, wenn install_packages
@@ -410,7 +466,9 @@ else warn "Repo-Klone — ${_RFAIL:-?} Fehler (privat? gh auth login, dann ./scr
   _SREP_V="▲ Repos (${_RFAIL:-?} Fehler)"; _SREP_C="${YELLOW}▲${R} Repos  ${DIM}(${_RFAIL:-?} Fehler → gh auth login)${R}"; fi
 
 RC=$(cat "$LOGD/macos.rc" 2>/dev/null||echo 1)
-if [ "$RC" = 0 ]; then ok "macOS-Defaults";
+if [ "$EXISTING" = 1 ]; then ok "macOS-Defaults übersprungen (bestehendes System)";
+  _SMAC_V="· macOS-Defaults (übersprungen)";  _SMAC_C="${DIM}· macOS-Defaults (übersprungen → ./scripts/macos-defaults.sh)${R}"
+elif [ "$RC" = 0 ]; then ok "macOS-Defaults";
   _SMAC_V="✔ macOS-Defaults";             _SMAC_C="${GREEN}✔${R} macOS-Defaults"
 else warn "macOS-Defaults — Fehler (Log: $LOGD/macos.log)";
   _SMAC_V="▲ macOS-Defaults — Fehler";    _SMAC_C="${YELLOW}▲${R} macOS-Defaults  ${DIM}(Fehler)${R}"; fi
@@ -423,25 +481,70 @@ else warn "macOS-Defaults — Fehler (Log: $LOGD/macos.log)";
 # IMMER dabei -> chezmoi promptet nie, und das Array ist nie leer (bash-3.2-safe).
 step "Dotfiles anwenden (chezmoi)…"
 printf '%s\n' "  ${DIM}(baut still Runtimes & nvim-Plugins vor — kann ein paar Minuten dauern)${R}"
+# Bestehendes System: vorhandene git-Identität wiederverwenden, NIE leer schreiben
+# (sonst „empty ident name not allowed"). ~/.gitconfig selbst wird eh via
+# .chezmoiignore ausgelassen; das hier füllt nur chezmois name/email-Prompt.
+if [ "$EXISTING" = 1 ]; then
+  [ -z "$_GIT_NAME" ]  && _GIT_NAME="$(git config --global user.name  2>/dev/null || true)"
+  [ -z "$_GIT_EMAIL" ] && _GIT_EMAIL="$(git config --global user.email 2>/dev/null || true)"
+  # Konvergenz-Hinweis: ~/.gitconfig wird NACH ~/.config/git/config gelesen und
+  # gewinnt -> setzt die lokale ~/.gitconfig bereits geteilte Keys (Aliase/delta/
+  # pull…), verschatten die die geteilte Config. Ehrlich ansagen (kein Datenverlust).
+  if git config --global --name-only --list 2>/dev/null | grep -qE '^(alias\.|pull\.rebase|push\.autosetupremote|core\.(pager|editor)|init\.defaultbranch|delta\.|interactive\.difffilter|merge\.conflictstyle|diff\.colormoved)'; then
+    warn "Deine ~/.gitconfig setzt bereits geteilte git-Keys — die gewinnen über ~/.config/git/config. Für volle Konvergenz diese Keys aus ~/.gitconfig entfernen."
+  fi
+fi
 CZ_ARGS=(--promptDefaults)
 [ -n "$_GIT_NAME" ]  && CZ_ARGS+=(--promptString "name=$_GIT_NAME")
 [ -n "$_GIT_EMAIL" ] && CZ_ARGS+=(--promptString "email=$_GIT_EMAIL")
 _cz() { chezmoi init --apply --source "$REPO_DIR" "${CZ_ARGS[@]}" >>"$LOG" 2>&1; }
+# Bestehendes System: NICHT blind anwenden. Erst Quelle+Config einrichten (ohne
+# apply -> schreibt nichts ins $HOME), dann JEDE bereits vorhandene verwaltete
+# Zieldatei nach ~/.dotfiles-backup-<zeit>/ sichern, Diff zeigen, nachfragen,
+# DANN apply. Rückgabe: 0=angewandt, 2=auf Nachfrage übersprungen, sonst Fehler.
+_cz_existing() {
+  local BK rel p nchg
+  BK="$HOME/.dotfiles-backup-$(date +%Y%m%d-%H%M%S)"
+  chezmoi init --source "$REPO_DIR" "${CZ_ARGS[@]}" >>"$LOG" 2>&1 || return 1
+  mkdir -p "$BK"
+  while IFS= read -r p; do
+    [ -e "$p" ] || continue
+    case "$p" in "$HOME"/*) rel="${p#"$HOME"/}" ;; *) continue ;; esac
+    mkdir -p "$BK/$(dirname "$rel")"
+    cp -aRp "$p" "$BK/$rel" 2>/dev/null || true
+  done < <(chezmoi managed --path-style=absolute 2>/dev/null)
+  DOTFILES_BACKUP="$BK"
+  chezmoi diff >>"$LOG" 2>&1 || true
+  nchg="$(chezmoi status 2>/dev/null | grep -c . || true)"; nchg="${nchg:-0}"
+  printf '%s\n' "  ${DIM}Backup aller betroffenen Dateien: $BK${R}"
+  printf '%s\n' "  ${DIM}${nchg} Datei(en) würden geändert — voller Diff im Log ($LOG) bzw. 'chezmoi diff'.${R}"
+  if [ -t 0 ] && [ -t 1 ] && [ "$NOINPUT" = 0 ]; then
+    ask_yn "Diese Dotfile-Änderungen jetzt anwenden?" || return 2
+  fi
+  chezmoi apply >>"$LOG" 2>&1
+}
+_cz_run() { if [ "$EXISTING" = 1 ]; then _cz_existing; else _cz; fi; }
 # Selbstheilung: ein abgebrochener Vorlauf (Strg-C mitten in chezmoi) hinterlässt
 # einen State-Lock -> jeder Folgelauf stürbe mit "timeout obtaining persistent
 # state lock". Robust: bei genau diesem Fehler UND keinem laufenden chezmoi den
 # verwaisten State entfernen (hält nur run_once-Buchführung; Hooks sind idempotent)
-# und EINMAL erneut versuchen.
-_cz_ok=0
-if _cz; then _cz_ok=1
-elif grep -qi 'state lock' "$LOG" 2>/dev/null && ! pgrep -x chezmoi >/dev/null 2>&1; then
-  warn "chezmoi-State-Lock verwaist (kein chezmoi läuft) — entferne & wiederhole…"
-  rm -f "$HOME/.config/chezmoi/chezmoistate.boltdb" "$HOME/.local/state/chezmoi/chezmoistate.boltdb" 2>/dev/null || true
-  _cz && _cz_ok=1
+# und EINMAL erneut versuchen. (rc=2 = Nutzer sagte Nein -> kein Retry.)
+_cz_ok=0; _cz_rc=0
+if _cz_run; then _cz_ok=1
+else
+  _cz_rc=$?
+  if [ "$_cz_rc" != 2 ] && grep -qi 'state lock' "$LOG" 2>/dev/null && ! pgrep -x chezmoi >/dev/null 2>&1; then
+    warn "chezmoi-State-Lock verwaist (kein chezmoi läuft) — entferne & wiederhole…"
+    rm -f "$HOME/.config/chezmoi/chezmoistate.boltdb" "$HOME/.local/state/chezmoi/chezmoistate.boltdb" 2>/dev/null || true
+    _cz_run && _cz_ok=1
+  fi
 fi
 if [ "$_cz_ok" = 1 ]; then
   ok "Dotfiles (chezmoi)"
   _SCHE_V="✔ Dotfiles (chezmoi)";         _SCHE_C="${GREEN}✔${R} Dotfiles  ${DIM}(chezmoi)${R}"
+elif [ "$_cz_rc" = 2 ]; then
+  warn "chezmoi apply auf Nachfrage übersprungen — Backup steht, nichts geändert."
+  _SCHE_V="· Dotfiles (übersprungen)";    _SCHE_C="${DIM}· Dotfiles (chezmoi — auf Nachfrage übersprungen)${R}"
 else warn "chezmoi — Fehler. Läuft evtl. noch ein chezmoi? sonst: rm ~/.config/chezmoi/chezmoistate.boltdb (Details: $LOG)";
   _SCHE_V="▲ Dotfiles (chezmoi — Fehler)"; _SCHE_C="${YELLOW}▲${R} Dotfiles  ${DIM}(chezmoi — Fehler)${R}"; fi
 # git-Identität kann leer sein, wenn oben nur Enter gedrückt wurde -> ehrlich melden.
@@ -454,6 +557,15 @@ _OPEN_GITID=0
 # installiert NICHTS -> deshalb reicht Exit 0 als Erfolgsbeweis nicht. Erst wenn
 # `mise ls --installed` echte Runtimes zeigt, ist das ✔ ehrlich.
 step "Runtimes prüfen (mise: node · python · ruby)…"
+# Bestehendes System: warnen, wenn ein anderer Runtime-Manager da ist. mise
+# aktiviert sich global via ~/.zshrc und kann node/python/ruby für bestehende
+# Projekte verschatten. Die mise-Config selbst wurde NICHT überschrieben
+# (.chezmoiignore) — die globalen Pins der Maschine bleiben also erhalten.
+if [ "$EXISTING" = 1 ]; then
+  if [ -d "$HOME/.pyenv" ] || [ -d "$HOME/.nvm" ] || [ -d "$HOME/.rbenv" ] || command -v asdf >/dev/null 2>&1; then
+    warn "Anderer Runtime-Manager erkannt (pyenv/nvm/rbenv/asdf). mise aktiviert sich global (~/.zshrc) und kann node/python/ruby bestehender Projekte verschatten — deine mise-Config bleibt aber unangetastet."
+  fi
+fi
 _SMIS_V="▲ Runtimes (mise nicht gefunden)"; _SMIS_C="${YELLOW}▲${R} Runtimes  ${DIM}(mise install manuell)${R}"
 if command -v mise >/dev/null 2>&1; then
   if [ ! -f "$HOME/.config/mise/config.toml" ]; then
@@ -512,7 +624,12 @@ if [ -t 0 ] && [ -t 1 ] && [ "${SETUP_NO_LOGIN:-0}" != 1 ] && [ "$NOINPUT" = 0 ]
     fi
   fi
   if command -v tailscale >/dev/null 2>&1; then
-    if ask_yn "Tailscale jetzt verbinden (sudo tailscale up)?"; then
+    if [ "$EXISTING" = 1 ] && tailscale status >/dev/null 2>&1; then
+      # Bestehendes System & Node schon oben: NICHT `tailscale up` — das würde die
+      # laufende Sitzung (über die man den iMac evtl. gerade erreicht) neu aushandeln.
+      ok "Tailscale bereits verbunden — unangetastet gelassen"
+      _STS_V="✔ Tailscale (bereits verbunden)"; _STS_C="${GREEN}✔${R} Tailscale  ${DIM}(bereits verbunden — nicht angefasst)${R}"; _OPEN_TS=0
+    elif ask_yn "Tailscale jetzt verbinden (sudo tailscale up)?"; then
       if sudo tailscale up; then
         _STS_V="✔ Tailscale (verbunden)"; _STS_C="${GREEN}✔${R} Tailscale  ${DIM}(verbunden)${R}"; _OPEN_TS=0
       else warn "tailscale up fehlgeschlagen."
@@ -602,6 +719,12 @@ _bl "  ▸  morgen (Terminal-Briefing) liegt in ~/.local/bin — braucht nur den
   _bl "  ▸  gh auth login" "  ${BLUE}▸${R}  ${CYAN}gh auth login${R}"
 [ "$_OPEN_TS" = 1 ] && \
   _bl "  ▸  sudo tailscale up" "  ${BLUE}▸${R}  ${CYAN}sudo tailscale up${R}"
+{ [ "$EXISTING" = 1 ] && [ -n "${DOTFILES_BACKUP:-}" ]; } && \
+  _bl "  ▸  Backup ersetzter Dotfiles: ${DOTFILES_BACKUP}" \
+      "  ${BLUE}▸${R}  Backup ersetzter Dotfiles:  ${DIM}${DOTFILES_BACKUP}${R}"
+[ "$EXISTING" = 1 ] && \
+  _bl "  ▸  Rückgängig: ./scripts/restore-backup.sh  ·  git-Aliase via ~/.config/git/config" \
+      "  ${BLUE}▸${R}  Rückgängig:  ${CYAN}./scripts/restore-backup.sh${R}  ${DIM}· git-Config via ~/.config/git/config${R}"
 _bl "  ▸  FileVault aktivieren  (Systemeinstellungen)" \
     "  ${BLUE}▸${R}  FileVault aktivieren  ${DIM}(Systemeinstellungen)${R}"
 _bl "  ▸  Chrome-Extensions:  ./scripts/chrome-extensions.sh" \

@@ -1,38 +1,15 @@
+# NUR Identität. Die geteilten Einstellungen (Aliase, delta, pull.rebase …) liegen
+# in ~/.config/git/config — Git liest beide Dateien. So kann `--existing` diese
+# ~/.gitconfig auf einem bestehenden System komplett in Ruhe lassen (via
+# .chezmoiignore), ohne dass die geteilte Config verloren geht.
+#
+# Leere Werte werden NIE geschrieben (sonst: „empty ident name not allowed").
+{{- if or .name .email }}
 [user]
+{{- if .name }}
     name  = {{ .name }}
+{{- end }}
+{{- if .email }}
     email = {{ .email }}
-
-[init]
-    defaultBranch = main
-
-[core]
-    editor = nvim
-    pager  = delta
-
-[interactive]
-    diffFilter = delta --color-only
-
-[delta]
-    navigate = true
-    line-numbers = true
-
-[merge]
-    conflictstyle = zdiff3
-
-[diff]
-    colorMoved = default
-
-[pull]
-    rebase = true
-
-[push]
-    autoSetupRemote = true
-
-[alias]
-    s  = status -sb
-    lg = log --oneline --graph --decorate --all
-    co = checkout
-    br = branch
-    aa = add --all
-    cm = commit -m
-    wt = worktree
+{{- end }}
+{{- end }}

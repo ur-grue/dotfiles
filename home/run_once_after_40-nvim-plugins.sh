@@ -5,10 +5,15 @@
 set -uo pipefail
 command -v nvim >/dev/null 2>&1 || exit 0
 echo "▸ nvim: Plugins vorbauen (lazy.nvim)…"
-# Lazy! = ohne UI/Prompts; sync = install + update + clean; dann sauber beenden.
+# Lazy! = ohne UI/Prompts; dann sauber beenden.
+# WICHTIG auf bestehenden Systemen (DOTFILES_EXISTING=1, von setup.sh --existing
+# gesetzt): `install` STATT `sync`. `sync` = install+update+CLEAN und würde jedes
+# Plugin ENTFERNEN, das nicht in dieser Repo-Spec steht — also die eigenen Plugins
+# des Nutzers löschen. `install` fügt nur die fehlenden hinzu, räumt nichts weg.
 # </dev/null: kein TTY erben -> ein blockierendes getchar()/input() (z.B. wenn der
 # lazy.nvim-Bootstrap-Clone scheitert) bekommt sofort EOF statt ewig zu hängen.
-nvim --headless "+Lazy! sync" +qa </dev/null >/dev/null 2>&1 || \
+if [ "${DOTFILES_EXISTING:-0}" = 1 ]; then _LAZY="+Lazy! install"; else _LAZY="+Lazy! sync"; fi
+nvim --headless "$_LAZY" +qa </dev/null >/dev/null 2>&1 || \
   echo "  (nvim-Plugins nicht komplett — später einmal 'nvim' öffnen + :Lazy sync)"
 
 # Treesitter-Parser SYNCHRON vorbauen. nvim-treesitter (main branch) installiert

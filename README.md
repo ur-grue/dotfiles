@@ -16,6 +16,32 @@ wendet alle Configs via chezmoi an (inkl. Secrets aus `pass`, mise-Runtimes,
 tmux-Plugins), setzt macOS-Defaults und klont die aktiven Repos nach `~/dev`.
 Danach: **manuelle Restschritte** in [`docs/cheatsheet.md`](docs/cheatsheet.md) → „Nach dem Setup".
 
+## Bestehendes System (iMac) — ein System auf allen Macs
+
+`setup.sh` ist für einen **frischen** Mac gebaut. Auf einem schon genutzten Mac
+(iMac im Alltag) stattdessen mit `--existing` laufen — **nicht-destruktiv**:
+
+```sh
+cd ~/dotfiles && ./setup.sh --existing        # oder --production / --merge
+```
+
+- **Backup vor jedem Überschreiben** — jede bereits vorhandene, von chezmoi
+  verwaltete Datei landet vorher in `~/.dotfiles-backup-<zeit>/`.
+- **Diff + Nachfrage** — `chezmoi diff` zeigt alles Geplante; erst nach `[y/N]`
+  wird angewendet.
+- **`~/.gitconfig` bleibt** — Identität, `signingkey`, Arbeits-`includeIf`,
+  credential.helper unangetastet. Die geteilten git-Aliase/-Tools kommen via
+  `~/.config/git/config` dazu (Git liest beide Dateien; lokale `~/.gitconfig`-Keys
+  haben Vorrang — schon gesetzte Keys aus `~/.gitconfig` entfernen, wenn sie mit
+  der geteilten Config konvergieren sollen).
+- **Bleibt lokal**: globale mise-Runtime-Pins, jrnl-Journal-Index, newsboat-Feeds.
+- **macOS-Defaults & Caps Lock**: werden NICHT angefasst. Bei Bedarf später
+  `./scripts/macos-defaults.sh` (schreibt vorher ein Restore-Skript).
+- **Casks über bereits vorhandenen Apps: skip** — kein Reinstall über ein schon
+  vorhandenes Citrix/Teams/Tailscale (schützt IT-Installationen).
+
+Rückgängig machen: `./scripts/restore-backup.sh` (nimmt das neueste Backup).
+
 ## Was drin ist
 
 | Bereich      | Tools |
@@ -50,12 +76,13 @@ Für Claude Code brauchst du **keinen** API-Key (Abo-Login).
 ## Struktur
 
 ```
-setup.sh            Orchestrator (frischer Mac)
+setup.sh            Orchestrator (frischer Mac  ·  --existing für bestehende)
 Brewfile            alle Pakete
 repos.txt           aktive Repos -> ~/dev
-scripts/            clone-repos · macos-defaults · pre-wipe-backup
+scripts/            clone-repos · macos-defaults · restore-backup · pre-wipe-backup
 docs/               Cheat Sheet, Claude-Code-Workflow, Theming
 home/               chezmoi-Quelle (.chezmoiroot zeigt hierher)
   dot_*             -> ~/.*
   dot_config/*      -> ~/.config/*
+  dot_config/git/config   geteilte git-Config (Identität bleibt in ~/.gitconfig)
 ```

@@ -3,6 +3,12 @@
 [data]
     name  = {{ $name  | quote }}
     email = {{ $email | quote }}
+    # --existing (bestehendes System) wird PERSISTENT in die chezmoi-Config
+    # geschrieben, NICHT nur als flüchtige Env-Variable. So beachten auch spätere
+    # gewöhnliche `chezmoi apply`-Läufe die Schutz-Ignores (.gitconfig, mise-Pins,
+    # jrnl, newsboat) — sonst würde der nächste Alltags-`chezmoi apply` sie wieder
+    # überschreiben. Quelle: Env DOTFILES_EXISTING (von setup.sh --existing gesetzt).
+    existing = {{ if eq (env "DOTFILES_EXISTING") "1" }}true{{ else }}false{{ end }}
 
 # Quelle dauerhaft verankern -> späteres `chezmoi apply`/`chezmoi edit`
 # findet das Repo auch ohne --source-Flag.
